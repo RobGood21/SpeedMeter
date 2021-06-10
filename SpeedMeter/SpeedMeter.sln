@@ -5,7 +5,17 @@ VisualStudioVersion = 15.0.28307.1433
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SpeedMeter", "SpeedMeter\SpeedMeter.vcxproj", "{C5F80730-F44F-4478-BDAE-6634EFC2CA88}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Ai_Ardulib_SSD1306-master-1.0.2", "Libraries\Ai_Ardulib_SSD1306-master\1.0.2\Ai_Ardulib_SSD1306-master\Ai_Ardulib_SSD1306-master-1.0.2.vcxitems", "{32AF92ED-4952-4DCE-8008-A11D09BE4833}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Wire-1.0", "Libraries\Wire\1.0\Wire\Wire-1.0.vcxitems", "{46652C01-88F0-402A-B520-B888607D01F3}"
+EndProject
 Global
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		Libraries\Ai_Ardulib_SSD1306-master\1.0.2\Ai_Ardulib_SSD1306-master\Ai_Ardulib_SSD1306-master-1.0.2.vcxitems*{32af92ed-4952-4dce-8008-a11d09be4833}*SharedItemsImports = 9
+		Libraries\Wire\1.0\Wire\Wire-1.0.vcxitems*{46652c01-88f0-402a-b520-b888607d01f3}*SharedItemsImports = 9
+		Libraries\Ai_Ardulib_SSD1306-master\1.0.2\Ai_Ardulib_SSD1306-master\Ai_Ardulib_SSD1306-master-1.0.2.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
+		Libraries\Wire\1.0\Wire\Wire-1.0.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
+	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x86 = Debug|x86
 		Release|x86 = Release|x86
