@@ -1,0 +1,8 @@
+Beschrijving Speedmeter
+
+
+
+
+General purpose registers
+GPIOR0
+bit0 flag up puls in ISR

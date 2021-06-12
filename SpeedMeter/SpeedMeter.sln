@@ -9,6 +9,11 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Ai_Ardulib_SSD1306-master-1
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Wire-1.0", "Libraries\Wire\1.0\Wire\Wire-1.0.vcxitems", "{46652C01-88F0-402A-B520-B888607D01F3}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{79CE8CE1-4775-4020-8D92-AA00C47992A4}"
+	ProjectSection(SolutionItems) = preProject
+		Beschrijving SpeedMeter.txt = Beschrijving SpeedMeter.txt
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
 		Libraries\Ai_Ardulib_SSD1306-master\1.0.2\Ai_Ardulib_SSD1306-master\Ai_Ardulib_SSD1306-master-1.0.2.vcxitems*{32af92ed-4952-4dce-8008-a11d09be4833}*SharedItemsImports = 9
