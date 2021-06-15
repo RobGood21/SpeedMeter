@@ -14,6 +14,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		Beschrijving SpeedMeter.txt = Beschrijving SpeedMeter.txt
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Display_SSD1306", "Display_SSD1306\Display_SSD1306.vcxproj", "{3415A350-7F0A-4AFD-A00E-9BD4A007C0F2}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Display_Adafruit", "Display_Adafruit\Display_Adafruit.vcxproj", "{FA8CD994-EDCF-4E76-B681-99B48FB39A31}"
+EndProject
 Global
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
 		Libraries\Ai_Ardulib_SSD1306-master\1.0.2\Ai_Ardulib_SSD1306-master\Ai_Ardulib_SSD1306-master-1.0.2.vcxitems*{32af92ed-4952-4dce-8008-a11d09be4833}*SharedItemsImports = 9
@@ -30,6 +34,14 @@ Global
 		{C5F80730-F44F-4478-BDAE-6634EFC2CA88}.Debug|x86.Build.0 = Debug|Win32
 		{C5F80730-F44F-4478-BDAE-6634EFC2CA88}.Release|x86.ActiveCfg = Release|Win32
 		{C5F80730-F44F-4478-BDAE-6634EFC2CA88}.Release|x86.Build.0 = Release|Win32
+		{3415A350-7F0A-4AFD-A00E-9BD4A007C0F2}.Debug|x86.ActiveCfg = Debug|Win32
+		{3415A350-7F0A-4AFD-A00E-9BD4A007C0F2}.Debug|x86.Build.0 = Debug|Win32
+		{3415A350-7F0A-4AFD-A00E-9BD4A007C0F2}.Release|x86.ActiveCfg = Release|Win32
+		{3415A350-7F0A-4AFD-A00E-9BD4A007C0F2}.Release|x86.Build.0 = Release|Win32
+		{FA8CD994-EDCF-4E76-B681-99B48FB39A31}.Debug|x86.ActiveCfg = Debug|Win32
+		{FA8CD994-EDCF-4E76-B681-99B48FB39A31}.Debug|x86.Build.0 = Debug|Win32
+		{FA8CD994-EDCF-4E76-B681-99B48FB39A31}.Release|x86.ActiveCfg = Release|Win32
+		{FA8CD994-EDCF-4E76-B681-99B48FB39A31}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

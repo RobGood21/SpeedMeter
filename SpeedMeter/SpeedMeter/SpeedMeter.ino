@@ -9,14 +9,15 @@
 
 */
 
+#include <SPI.h>
 #include <Wire.h>
-//#include <ACROBOTIC_SSD1306.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
-#define display_Address               0x3C
-#define display_Command_Mode          0x80
-#define display_Data_Mode             0x40
-#define Display_Off_Cmd       0xAE
-#define Display_On_Cmd        0xAF
+//Display
+//Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+Adafruit_SSD1306 display(128, 64, &Wire, 4);
+
 
 
 //voor SimpleDyno
@@ -49,19 +50,22 @@ unsigned long antidender1;
 unsigned long antidender2;
 int switchstatus=15;
 
-//variabelen uit private van ACROBOTIC_SSD1306.h
-const uint8_t* m_font;      // Current font.
-uint8_t m_font_offset = 2;  // Font bytes for meta data.
-uint8_t m_font_width;       // Font witdth.
-uint8_t m_col;              // Cursor column.
-uint8_t m_row;              // Cursor row (RAM). 
-bool m_inverse = false;       // Inverse text.
-
-
-
 
 void setup() {
 	Serial.begin(9600);
+
+	//Voor Display
+
+	// SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
+	if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+		Serial.println(F("SSD1306 allocation failed"));
+		for (;;); // Don't proceed, loop forever
+	}
+	display.clearDisplay();
+	display.display();
+	// display.drawPixel(x, y, color)
+
+
 	GPIOR0 = 0;
 	//Poorten en pins definieren
 	DDRD |= (1 << 7); //Pin 7 Groene led, output
@@ -84,9 +88,7 @@ void setup() {
 	EIMSK |= (1 << 1); //Interupt INT1 enabled
 
 //display
-	Wire.begin();
-	//oled.init();                      // Initialze SSD1306 OLED display
-	//oled.clearDisplay();
+
 }
 
 ISR(INT0_vect) {
@@ -131,7 +133,7 @@ void loop() {
 	if (micros() - slowtime > 1000) {
 		slowtime = micros();
 		SW_exe();
-		//SD_exe(); //sends to  simpledyno
+		SD_exe(); //sends to  simpledyno
 	}
 
 }
@@ -162,17 +164,26 @@ void SW_on(byte sw) {
 
 	switch (sw) {
 	case 0:
-		I2C_send(Display_Off_Cmd);
+
+	//Display_Off_Cmd				  0xAE
+	//Display_On_Cmd				0xAF
+		I2C_send(0xAE);
 		break;
 	case 1:
-		I2C_send(Display_On_Cmd);
+		I2C_send(0xAF);
 		break;
 	case 2:
+		display.drawRect(2, 2, 125, 61, WHITE);
+		display.setTextColor(WHITE);
+		display.setTextSize(1);
+		display.setCursor(20, 20);
+		display.print("Wisselmotor.nl");
+		display.display();
+
 		break;
 	case 3:
-		//oled.init();
-		//oled.clearDisplay();
-		DP_clear();
+		display.clearDisplay();
+		display.display();
 
 		break;
 	}
@@ -202,68 +213,11 @@ void SD_exe() {
 	Serial.flush();
 }
 
-void DP_clear() {
-//#define Display_Off_Cmd       0xAE
-//#define Display_On_Cmd        0xAF
-
-		unsigned char i, j;
-		I2C_send(Display_Off_Cmd);     //display off
-		for (j = 0; j < 8; j++)
-		{
-			DP_setTextXY(j, 0);
-			{
-				for (i = 0; i < 16; i++)  //clear all columns
-				{
-					DP_putChar(' ');
-				}
-			}
-		}
-		I2C_send(Display_On_Cmd);     //display on
-		DP_setTextXY(0, 0);	
-}
-
-void DP_setTextXY(unsigned char row, unsigned char col){
-	I2C_send(0xB0 + row);                          //set page address
-	I2C_send(0x00 + (m_font_width*col & 0x0F));    //set column lower addr
-	I2C_send(0x10 + ((m_font_width*col >> 4) & 0x0F)); //set column higher addr
-}
-
-void DP_setFont(const uint8_t* font, bool inverse)
-{
-	m_font = font;
-	m_inverse = inverse;
-	m_font_width = pgm_read_byte(&m_font[0]);
-}
-
-bool DP_putChar(unsigned char ch){
-	if (!m_font) return 0;
-	//Ignore non-printable ASCII characters. This can be modified for
-	//multilingual font. 
-	if (ch < 32 || ch > 127)
-	{
-		ch = ' ';
-	}
-	for (unsigned char i = 0; i < m_font_width; i++)
-	{
-		// Font array starts at 0, ASCII starts at 32
-		I2C_sendData(pgm_read_byte(&m_font[(ch - 32)*m_font_width + m_font_offset + i]));
-	}
-	return 1;
-}
-
 
 void I2C_send(byte command) {
-	Wire.beginTransmission(display_Address);    // begin I2C communication adress0x3C
-	Wire.write(display_Command_Mode);           // Set OLED Command mode 0x80
+	Wire.beginTransmission(0x3C);    // begin I2C communication adress0x3C
+	Wire.write(0x80);           // Set OLED Command mode 0x80
 	Wire.write(command);
 	Wire.endTransmission();                       // End I2C communication
 }
-
-void I2C_sendData(unsigned char Data){
-	Wire.beginTransmission(display_Address); // begin I2C transmission
-	Wire.write(display_Data_Mode);            // data mode
-	Wire.write(m_inverse ? ~Data : Data);
-	Wire.endTransmission();                    // stop I2C transmission
-}
-
 
