@@ -1,8 +1,13 @@
 Beschrijving Speedmeter
+Een snelheids, RPM meter voor modelautoos en treinen. 
 
-
+Deze sketch bevat de eerste zelf (gekopieerde) commandoos voor I2C en daaraan gekoppeled display.
+Om van de display libraries af te komen.
 
 
 General purpose registers
 GPIOR0
-bit0 flag up puls in ISR
+bit0 nc
+bit1 nc
+bit2 nc
+bit3 nc
