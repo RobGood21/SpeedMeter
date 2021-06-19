@@ -4,6 +4,10 @@ Een snelheids, RPM meter voor modelautoos en treinen.
 Deze sketch bevat de eerste zelf (gekopieerde) commandoos voor I2C en daaraan gekoppeled display.
 Om van de display libraries af te komen.
 
+	//Display_Off_Cmd				  0xAE
+	//Display_On_Cmd				0xAF
+		//I2C_send(0xAE);
+		//I2C_send(0xAF);
 
 General purpose registers
 GPIOR0

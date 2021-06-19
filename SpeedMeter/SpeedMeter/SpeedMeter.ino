@@ -22,7 +22,6 @@ Adafruit_SSD1306 display(128, 64, &Wire, 4);
 
 //voor SimpleDyno
 
-
 //message string" micros(),temptime1,time1,temptime2.time2,0,0,0,0,0,0"
 //De 6 nullen zijn de 6 optionele Analog reads voor: voltage, stroom, temeratuur1 en temperatuur2. 5 en 6 zijn not in use
 //Message 1000Hz (1x per 1 ms)
@@ -38,7 +37,8 @@ unsigned int SD_reads[6];
 unsigned long oldtime1; //voor berekening interval tussen twee pulsen
 unsigned long oldtime2;
 unsigned long slowtime;
-byte ledcount[2];
+
+int SW_time; //counter, timer voor zeer langzame processen (1xper 20ms, 50hz)
 
 //variabelen
 byte holes1 = 20; //20; 5=kwart rotatie rpm x4 aantal pulsen per rotatie, gaatjes in de IR disc
@@ -50,6 +50,14 @@ unsigned long antidender1;
 unsigned long antidender2;
 int switchstatus=15;
 
+int RPM1;
+int RPM2;
+byte DP_type=0; //welk scherm wordt getoond, wisseld met knop 4
+
+
+
+//temps
+int count=9000;
 
 void setup() {
 	Serial.begin(9600);
@@ -75,6 +83,8 @@ void setup() {
 	PORTB |= (15 << 0); //pull-up to pins 8~11
 
 
+
+
 //define interrupt
 	//Interupt on rising edge PIN2, INT0
 	//01 = any change 10=falling edge 11=rising edge
@@ -89,11 +99,13 @@ void setup() {
 
 //display
 
+
+
 }
 
 ISR(INT0_vect) {
-	cli();
-	if (micros() - antidender1 > 1000) {
+	cli();	
+	if (micros() - antidender1 > 100) {
 		antidender1 = micros();
 		holecount1++;
 		if (holecount1 >= holes1) {
@@ -128,15 +140,61 @@ ISR(INT1_vect) {
 
 
 void loop() {
-	//check voor inschakelen interupts
 
-	if (micros() - slowtime > 1000) {
-		slowtime = micros();
-		SW_exe();
-		SD_exe(); //sends to  simpledyno
+	if (millis() - slowtime > 1) {
+		slowtime = millis();
+		// SD_exe(); //sends to  simpledyno
+		calc();
+
+		SW_time++;
+		if (SW_time > 50) { //in combi met slowtime zorgen dit ongeveer een 20hz (50ms)
+			SW_time = 0;
+			SW_exe();
+			DP_exe();
+		}
+	}
+}
+
+
+
+
+
+void DP_exe() {
+	//Ververst het display op zichtbare snelheid dus 50x per seconde (20ms)
+
+	//Serial.print(F("RPM1= ")); Serial.print(RPM1); Serial.print(F("   RPM2= ")); Serial.println(RPM2);
+display.clearDisplay();
+	display.setTextColor(WHITE);
+	display.setTextSize(3);
+	display.setCursor(3, 3);
+	
+
+	switch (DP_type) {
+	case 0:
+display.print(RPM2);
+
+		break;
+	case 1:
+		display.print("Scherm 1 ");
+		break;
+	case 2:
+		display.print("display 2" );
+		break;
+	case 3:
+		display.print("Toon 3");
+		break;
+	case 4:
+		display.print("program?");
+		break;
 	}
 
+	display.display();
+
+
+	//I2C_send(0xAF); //display on
+
 }
+
 void SW_exe() {
 	byte ss; byte changed;
 	ss = PINB;
@@ -164,26 +222,17 @@ void SW_on(byte sw) {
 
 	switch (sw) {
 	case 0:
-
-	//Display_Off_Cmd				  0xAE
-	//Display_On_Cmd				0xAF
-		I2C_send(0xAE);
+		//wisseld scherm
+		DP_type++;
+		if (DP_type > 4)DP_type = 0;
 		break;
 	case 1:
-		I2C_send(0xAF);
+
 		break;
 	case 2:
-		display.drawRect(2, 2, 125, 61, WHITE);
-		display.setTextColor(WHITE);
-		display.setTextSize(1);
-		display.setCursor(20, 20);
-		display.print("Wisselmotor.nl");
-		display.display();
 
 		break;
 	case 3:
-		display.clearDisplay();
-		display.display();
 
 		break;
 	}
@@ -193,7 +242,6 @@ void SW_off(byte sw) {
 }
 void SD_exe() {
 	//berekend en sends message over serial port to SympleDyno
-
 	//SD_times[2] = SD_times[0];
 	//SD_times[3] = SD_times[1];
 
@@ -213,6 +261,12 @@ void SD_exe() {
 	Serial.flush();
 }
 
+void calc() {
+	//maakt alle berekeningen
+RPM1 = 60000000 / SD_times[1];
+RPM2 = 60000000 / SD_times[3];
+
+}
 
 void I2C_send(byte command) {
 	Wire.beginTransmission(0x3C);    // begin I2C communication adress0x3C
