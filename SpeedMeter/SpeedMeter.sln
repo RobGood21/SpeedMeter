@@ -18,12 +18,16 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Display_SSD1306", "Display_
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Display_Adafruit", "Display_Adafruit\Display_Adafruit.vcxproj", "{FA8CD994-EDCF-4E76-B681-99B48FB39A31}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "EEPROM-2.0", "Libraries\EEPROM\2.0\EEPROM\EEPROM-2.0.vcxitems", "{C847E744-F0E3-43C1-B32E-050011DEA0EA}"
+EndProject
 Global
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
 		Libraries\Ai_Ardulib_SSD1306-master\1.0.2\Ai_Ardulib_SSD1306-master\Ai_Ardulib_SSD1306-master-1.0.2.vcxitems*{32af92ed-4952-4dce-8008-a11d09be4833}*SharedItemsImports = 9
 		Libraries\Wire\1.0\Wire\Wire-1.0.vcxitems*{46652c01-88f0-402a-b520-b888607d01f3}*SharedItemsImports = 9
 		Libraries\Ai_Ardulib_SSD1306-master\1.0.2\Ai_Ardulib_SSD1306-master\Ai_Ardulib_SSD1306-master-1.0.2.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
+		Libraries\EEPROM\2.0\EEPROM\EEPROM-2.0.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
 		Libraries\Wire\1.0\Wire\Wire-1.0.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
+		Libraries\EEPROM\2.0\EEPROM\EEPROM-2.0.vcxitems*{c847e744-f0e3-43c1-b32e-050011dea0ea}*SharedItemsImports = 9
 	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x86 = Debug|x86

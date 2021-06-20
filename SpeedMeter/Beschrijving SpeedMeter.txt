@@ -9,9 +9,18 @@ Om van de display libraries af te komen.
 		//I2C_send(0xAE);
 		//I2C_send(0xAF);
 
+MEM_reg
+bit0  toon kmh true, rpm false in groot venster
+bit1 Toon PM1 in main true, RM2 in main false
+
+
 General purpose registers
 GPIOR0
 bit0 nc
 bit1 nc
 bit2 nc
 bit3 nc
+
+
+EEPROM
+MEM_reg=100

@@ -9,6 +9,8 @@
 
 */
 
+
+#include <EEPROM.h>
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -21,11 +23,9 @@ Adafruit_SSD1306 display(128, 64, &Wire, 4);
 
 
 //voor SimpleDyno
-
 //message string" micros(),temptime1,time1,temptime2.time2,0,0,0,0,0,0"
 //De 6 nullen zijn de 6 optionele Analog reads voor: voltage, stroom, temeratuur1 en temperatuur2. 5 en 6 zijn not in use
 //Message 1000Hz (1x per 1 ms)
-
 String toSend;
 unsigned long SD_times[4];
 unsigned int SD_reads[6];
@@ -33,6 +33,11 @@ unsigned int SD_reads[6];
 //RPM1 interval =sd_times[1]
 //RPM2 time =sd_times[2]
 //RPM2 interval =sd_times[3]
+
+
+//constanten
+#define DPtypes 4 //aantal verschillende DP_type
+
 
 unsigned long oldtime1; //voor berekening interval tussen twee pulsen
 unsigned long oldtime2;
@@ -48,16 +53,20 @@ byte holecount1; byte holecount2;
 
 unsigned long antidender1;
 unsigned long antidender2;
-int switchstatus=15;
+int switchstatus = 15;
 
-int RPM1;
-int RPM2;
-byte DP_type=0; //welk scherm wordt getoond, wisseld met knop 4
+unsigned int RPM1=0;
+unsigned int RPM2=0;
 
+byte DP_type = 0; //EEPROM #101 welk scherm wordt getoond, wisseld met knop 4
+byte MEM_reg; //EEPROM #100
 
 
 //temps
-int count=9000;
+int count = 9000;
+
+
+
 
 void setup() {
 	Serial.begin(9600);
@@ -99,12 +108,12 @@ void setup() {
 
 //display
 
-
-
+	//initialisaties
+	MEM_read();
 }
 
 ISR(INT0_vect) {
-	cli();	
+	cli();
 	if (micros() - antidender1 > 100) {
 		antidender1 = micros();
 		holecount1++;
@@ -123,7 +132,7 @@ ISR(INT0_vect) {
 ISR(INT1_vect) {
 	cli();
 
-	if (micros() - antidender2 > 1000) {
+	if (micros() - antidender2 > 100) {
 		antidender2 = micros();
 		holecount2++;
 
@@ -157,28 +166,74 @@ void loop() {
 
 
 
-
+void MEM_read() {
+	//Leest EEPROM na power up
+	MEM_reg = EEPROM.read(100);
+	DP_type = EEPROM.read(101);
+	if (DP_type > DPtypes)DP_type = 0;
+}
+void MEM_write() {
+	//updates EEPROM, vaak.... dus als rare fouten na enkele jaren denkbaar EEPROM defect van de arduino
+	EEPROM.update(100, MEM_reg);
+	EEPROM.update(101, DP_type);
+}
 
 void DP_exe() {
+	String txt_data ="";
+	String txt_type; String txt_rm;
+	byte spatie;
 	//Ververst het display op zichtbare snelheid dus 50x per seconde (20ms)
 
 	//Serial.print(F("RPM1= ")); Serial.print(RPM1); Serial.print(F("   RPM2= ")); Serial.println(RPM2);
-display.clearDisplay();
-	display.setTextColor(WHITE);
-	display.setTextSize(3);
-	display.setCursor(3, 3);
-	
-
+	display.clearDisplay();
 	switch (DP_type) {
 	case 0:
-display.print(RPM2);
+		//txt1 = "";
+		display.drawLine(2, 30, 120, 30, WHITE);
+		if (MEM_reg & (1 << 0)) { //Mainvenster RPM 			
+			txt_type += F("RPM");
+		}
+		else { //Mainvenster kmh
+			txt_type += F("KMh");
+		}	
+
+		if (MEM_reg & (1 << 1)) { //Mainvenster RM1		
+			spatie = spaties(RPM1, 5); //getal, aantal cyfers in het getal
+			for (byte i = 0; i < spatie; i++) {
+				txt_data += " ";
+			}
+			txt_rm = F("RM1");
+			txt_data += RPM1;
+		}
+		else { //MainVenster RM2
+			spatie = spaties(RPM2, 5); //getal, aantal cyfers in het getal
+			for (byte i = 0; i < spatie; i++) {
+				txt_data += " ";
+			}
+
+			txt_rm = F("RM2");
+			txt_data += RPM2;
+		}
+
+		display.setTextColor(WHITE);
+		display.setTextSize(3);
+		display.setCursor(1, 5);
+		display.print(txt_data);
+
+		display.setTextSize(1);
+		display.setCursor(95, 7);
+		display.print(txt_rm);
+		display.setCursor(95,19);
+		display.print(txt_type);
+		
 
 		break;
 	case 1:
+
 		display.print("Scherm 1 ");
 		break;
 	case 2:
-		display.print("display 2" );
+		display.print("display 2");
 		break;
 	case 3:
 		display.print("Toon 3");
@@ -193,6 +248,19 @@ display.print(RPM2);
 
 	//I2C_send(0xAF); //display on
 
+}
+
+byte spaties(int nummer, byte digits) {
+	byte aantal=0;
+	byte spatie;
+	while (nummer > 10) {
+		aantal++;
+		nummer = nummer / 10;
+	}
+	//aantal is nu aantal cyfers
+	spatie = digits- 1 - aantal;
+
+	return spatie;
 }
 
 void SW_exe() {
@@ -223,19 +291,26 @@ void SW_on(byte sw) {
 	switch (sw) {
 	case 0:
 		//wisseld scherm
-		DP_type++;
-		if (DP_type > 4)DP_type = 0;
+		DP_type ++;
+		if (DP_type > DPtypes)DP_type = 0;
 		break;
 	case 1:
-
+		switch (DP_type) {
+		case 0: //wisseld tonen kmh of RPM in hoofd venster
+			MEM_reg ^= (1 << 0);
+			break;
+		}
 		break;
 	case 2:
-
+		MEM_reg ^= (1 << 1);
 		break;
 	case 3:
 
 		break;
 	}
+
+	//MEM_write();
+
 }
 void SW_off(byte sw) {
 
@@ -263,8 +338,11 @@ void SD_exe() {
 
 void calc() {
 	//maakt alle berekeningen
-RPM1 = 60000000 / SD_times[1];
-RPM2 = 60000000 / SD_times[3];
+	RPM1 = 60000000 / SD_times[1]+1;
+	RPM2 = 60000000 / SD_times[3]+1;
+
+	//if (RPM1 > 50000)RPM1 = 0;
+
 
 }
 
