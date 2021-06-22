@@ -24,3 +24,9 @@ bit3 nc
 
 EEPROM
 MEM_reg=100
+DP_type 102
+drm1 110
+drm2 111
+drmw1 112
+drmw2 113
+
