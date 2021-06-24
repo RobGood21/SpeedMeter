@@ -47,26 +47,28 @@ int SW_time; //counter, timer voor zeer langzame processen (1xper 20ms, 50hz)
 
 struct PRESETS {
 
-byte dr1; //diameter rol 1 in mm
-byte dr2; //diameter rol2
-byte dw1;//diameter wiel voertuig op RM1 
-byte dw2; //diameter wiel voertuig op RM2
-byte holes1; //20; 5=kwart rotatie rpm x4 aantal pulsen per rotatie, gaatjes in de IR disc
-byte holes2;
-byte schaal;
-
+	byte dr1; //diameter rol 1 in mm
+	byte dr2; //diameter rol2
+	byte dw1;//diameter wiel voertuig op RM1 
+	byte dw2; //diameter wiel voertuig op RM2
+	byte puls1; //20; 5=kwart rotatie rpm x4 aantal pulsen per rotatie, gaatjes in de IR disc
+	byte puls2;
+	byte schaal;
+	byte precisie; //1~10  1 voor langzame metingen 10 voor extreem snelle metingen 5 = default gemiddeld
 };
 
 PRESETS preset[6];
 
-byte currentpreset = 0;
-
+byte p = 0;
 //variabelen
-
 byte holecount1; byte holecount2;
 
-unsigned long antidender1;
-unsigned long antidender2;
+unsigned int dender[2];
+unsigned long antidender[2];
+
+
+
+
 int switchstatus = 15;
 byte switchcount[4];
 
@@ -125,6 +127,7 @@ void setup() {
 
 	//initialisaties
 	MEM_read();
+	R_dender();
 }
 
 
@@ -132,10 +135,11 @@ void setup() {
 ISR(INT0_vect) {
 	cli();
 	countstop = 0;
-	if (micros() - antidender1 > 1000 / preset[currentpreset].holes1 ) {
-		antidender1 = micros();
+	if (micros() - antidender[0] > dender[0]) {
+		//preset[p].holes1) {
+		antidender[0] = micros();
 		holecount1++;
-		if (holecount1 >= preset[currentpreset].holes1) {
+		if (holecount1 >= preset[p].puls1) {
 			holecount1 = 0;
 			PIND |= (1 << 6);
 
@@ -151,13 +155,15 @@ ISR(INT0_vect) {
 
 
 ISR(INT1_vect) {
+
+	//denk dat die struct volatile moet worden anders tussen variabel voor maken INT0 doettu welll
 	cli();
 	countstop = 0;
-	if (micros() - antidender2 > 1000 / preset[currentpreset].holes2) {
-		antidender2 = micros();
+	if (micros() - antidender[1] > dender[1]) {
+		antidender[1] = micros();
 		holecount2++;
 
-		if (holecount2 >= preset[currentpreset].holes2) {
+		if (holecount2 >= preset[p].puls2) {
 			holecount2 = 0;
 			PIND |= (1 << 7); //groene led aan
 			SD_times[2] = micros();
@@ -180,7 +186,7 @@ void loop() {
 			RPM2 = 0;
 			PORTD &= ~(B11000000 << 0); //leds uit			
 		}
-		SD_exe(); //sends to  simpledyno	
+		//SD_exe(); //sends pulses to  simpledyno via serial connection
 		SW_exe();
 		//tekens(); //gebruiken om speciaal teken op te zoeken
 		DP_exe();
@@ -200,31 +206,76 @@ void factory() {
 }
 
 void MEM_read() {
+
 	//Leest EEPROM na power up
-	MEM_reg = EEPROM.read(100);
-	DP_type = EEPROM.read(101);
+	MEM_reg = EEPROM.read(10);
+	DP_type = EEPROM.read(11);
 	if (DP_type > DPtypes)DP_type = 0;
 	//roller en wieldiameters
-	preset[currentpreset].dr1 = EEPROM.read(110);
-	preset[currentpreset].dr2 = EEPROM.read(111);
-	preset[currentpreset].dw1 = EEPROM.read(112);
-	preset[currentpreset].dw2 = EEPROM.read(113);
-	preset[currentpreset].schaal = EEPROM.read(114);
-	if (preset[currentpreset].dr1 == 0xFF)preset[currentpreset].dr1 = 20;
-	if (preset[currentpreset].dr2 == 0xFF)preset[currentpreset].dr2 = 20;
-	if (preset[currentpreset].dw1 == 0xFF)preset[currentpreset].dw1 = preset[currentpreset].dr1;
-	if (preset[currentpreset].dw2 == 0xFF)preset[currentpreset].dw2 = preset[currentpreset].dr2;
-	if (preset[currentpreset].schaal == 0xFF)preset[currentpreset].schaal = 1;
+
+
+	p = EEPROM.read(12);
+	if (p == 0xFF)p = 0;
+	///P =current preset moet nu al geladen zijn uit EEPROM
+
+	//6 presets mogelijk
+
+	for (byte i = 0; i < 6; i++) {
+
+		preset[i].dr1 = EEPROM.read(100 + (i * 10));
+		preset[i].dr2 = EEPROM.read(101 + (i * 10));
+		preset[i].dw1 = EEPROM.read(102 + (i * 10));
+		preset[i].dw2 = EEPROM.read(103 + (i * 10));
+		preset[i].puls1 = EEPROM.read(104 + (i * 10));
+		preset[i].puls2 = EEPROM.read(105 + (i * 10));
+		preset[i].schaal = EEPROM.read(106 + (i * 10));
+		preset[i].precisie = EEPROM.read(107 + (i * 10));
+
+		if (preset[i].dr1 == 0xFF)preset[i].dr1 = 20;
+		if (preset[i].dr2 == 0xFF)preset[i].dr2 = 20;
+		if (preset[i].dw1 == 0xFF)preset[i].dw1 = preset[p].dr1;
+		if (preset[i].dw2 == 0xFF)preset[i].dw2 = preset[p].dr2;
+		if (preset[i].puls1 == 0xFF)preset[i].puls1 = 1;
+		if (preset[i].puls2 == 0xFF)preset[i].puls2 = 1;
+		if (preset[i].schaal == 0xFF)preset[i].schaal = 1;
+		if (preset[i].precisie == 0xFF)preset[i].precisie = 6;
+	}
+
+
 }
 void MEM_write() {
 	//updates EEPROM, vaak.... dus als rare fouten na enkele jaren denkbaar EEPROM defect van de arduino
-	EEPROM.update(100, MEM_reg);
-	EEPROM.update(101, DP_type);
-	EEPROM.update(110, preset[currentpreset].dr1);
-	EEPROM.update(111, preset[currentpreset].dr2);
-	EEPROM.update(112, preset[currentpreset].dw1);
-	EEPROM.update(113, preset[currentpreset].dw2);
-	EEPROM.update(114, preset[currentpreset].schaal);
+	EEPROM.update(10, MEM_reg);
+	EEPROM.update(11, DP_type);
+	EEPROM.update(12, p);
+	//alleen de current preset p hoeft te worden geupdated.
+	EEPROM.update(100, preset[p].dr1);
+	EEPROM.update(101, preset[p].dr2);
+	EEPROM.update(102, preset[p].dw1);
+	EEPROM.update(103, preset[p].dw2);
+	EEPROM.update(104, preset[p].puls1);
+	EEPROM.update(105, preset[p].puls2);
+	EEPROM.update(106, preset[p].schaal);
+	EEPROM.update(107, preset[p].precisie);
+
+	R_dender(); //bereken denderwaardes, van precisie
+
+}
+
+void R_dender() {
+	//berekend de dender waarde in us voor de twee rotatie meters. dender 50~50000 
+	//interupts niet actief tijdens deze waarde
+	//voor hoge snelheid precisie laag cyfer, hoe langzamer cyfer verhogen. filtert dender(bouncing) van sensoren.
+
+	int temp = 10;
+	for (byte n = 0; n < preset[p].precisie; n++) {
+		temp = temp * 2;
+	}
+	dender[0] = temp / preset[p].puls1;
+	dender[1] = temp / preset[p].puls2;
+
+	Serial.print("Dender 0 = "); Serial.print(dender[0]); Serial.print("  Dender 1 = "); Serial.println(dender[1]);
+
 }
 
 void DP_exe() { //called from loop()	
@@ -253,27 +304,60 @@ void DP_exe() { //called from loop()
 }
 
 void scherm1() {
+
 	String txt_data = "";
 	String txt_type; String txt_rm;
 	byte spatie = 0;
-	int speed;
+	int speed; //Voor RPM
+	float snelheid; //voor KMh
+
 
 	//Main venster
-	if (MEM_reg & (1 << 0)) { //Mainvenster RPM 			
+	if (MEM_reg & (1 << 0)) { //Mainvenster RPM 	
 		txt_type += F("RPM");
+		//logo welk wiel wordt getoond
+		if (MEM_reg & (1 << 2)) { //rpm roller
+			display.drawCircle(105, 40, 5, WHITE);
+			display.fillCircle(95, 50, 8, WHITE);
+			txt_rm = (F("RM"));
+
+		}
+		else { //rpm wiel voertuig
+			display.fillCircle(105, 40, 5, WHITE);
+			display.drawCircle(95, 50, 8, WHITE);
+			txt_rm = (F("AS"));
+		}
+
+		if (MEM_reg & (1 << 1)) { //Mainvenster RM1	
+			speed = RPM1;
+			txt_rm += F("1");
+			if (~MEM_reg & (1 << 2))speed = speed * preset[p].dr1 / preset[p].dw1;
+		}
+		else { //MainVenster RM2
+			speed = RPM2;
+			if (~MEM_reg & (1 << 2))speed = speed * preset[p].dr2 / preset[p].dw2;
+			txt_rm += F("2");
+		}
+
 	}
 	else { //Mainvenster kmh
+		txt_rm = F("RM");
 		txt_type += F("KMh");
+
+		if (MEM_reg & (1 << 1)) { //RM1
+			txt_rm += F("1");
+			snelheid = RPM1 * preset[p].dr1*3.14;
+		}
+		else {
+			txt_rm += F("2"); //RM2
+		}
+	
+		snelheid = snelheid*60 / 100000;
+		
+		txt_data += snelheid;
+
 	}
 
-	if (MEM_reg & (1 << 1)) { //Mainvenster RM1		
-		speed = RPM1;
-		txt_rm = F("RM1");
-	}
-	else { //MainVenster RM2
-		speed = RPM2;
-		txt_rm = F("RM2");
-	}
 
 	spatie = spaties(speed, 5); //getal, aantal cyfers in het getal
 	for (byte i = 0; i < spatie; i++) {
@@ -321,8 +405,18 @@ void scherm1() {
 	display.setCursor(33, 48);
 	display.print(txt_data);
 
+	// Rechter onder klein venster
+
+
+
+
+
+
 
 }
+
+
+
 void scherm2() {
 	//programmeer venster	
 	byte spatie;
@@ -330,108 +424,123 @@ void scherm2() {
 	display.setTextColor(WHITE);
 	display.setTextSize(1);
 
-	//level0********************Diameter roller 1
+	//level0*************Preset keuze
 	display.setCursor(1, 1);
+	display.print(F("Preset "));
+	display.print(p + 1);
+
+	//level1********************Diameter roller 1
+	display.setCursor(1, 15);
 	display.write(236);
 	display.print(F("RM1 "));
 
 	txt_data = "";
-	spatie = spaties(preset[currentpreset].dr1, 3); //getal, aantal cyfers in het getal
+	spatie = spaties(preset[p].dr1, 3); //getal, aantal cyfers in het getal
 	for (byte i = 0; i < spatie; i++) {
 		txt_data += " ";
 	}
-	txt_data += preset[currentpreset].dr1;
+	txt_data += preset[p].dr1;
 	display.print(txt_data);
-	//Level 1 *******************Diameter wiel op RM1 
-	display.setCursor(63, 1);
+	//Level 2 *******************Diameter wiel op RM1 
+	display.setCursor(63, 15);
 	display.write(236);
 	display.print(F("Wiel "));
 
 	txt_data = "";
-	spatie = spaties(preset[currentpreset].dw1, 3); //getal, aantal cyfers in het getal
+	spatie = spaties(preset[p].dw1, 3); //getal, aantal cyfers in het getal
 	for (byte i = 0; i < spatie; i++) {
 		txt_data += " ";
 	}
-	txt_data += preset[currentpreset].dw1;
+	txt_data += preset[p].dw1;
 	display.print(txt_data);
-	//level2 ********************Diameter roller 2
-	display.setCursor(1, 13);
+	//level3 ********************Diameter roller 2
+	display.setCursor(1, 27);
 	display.write(236);
 	display.print(F("RM2 "));
 
 	txt_data = "";
-	spatie = spaties(preset[currentpreset].dr2, 3); //getal, aantal cyfers in het getal
+	spatie = spaties(preset[p].dr2, 3); //getal, aantal cyfers in het getal
 	for (byte i = 0; i < spatie; i++) {
 		txt_data += " ";
 	}
-	txt_data += preset[currentpreset].dr2;
+	txt_data += preset[p].dr2;
 	display.print(txt_data);
-	//level3 *******************Diameter wiel op RM2 
-	display.setCursor(63, 13);
+	//level4 *******************Diameter wiel op RM2 
+	display.setCursor(63, 27);
 	display.write(236);
 	display.print(F("Wiel "));
 
 	txt_data = "";
-	spatie = spaties(preset[currentpreset].dw2, 3); //getal, aantal cyfers in het getal
+	spatie = spaties(preset[p].dw2, 3); //getal, aantal cyfers in het getal
 	for (byte i = 0; i < spatie; i++) {
 		txt_data += " ";
 	}
-	txt_data += preset[currentpreset].dw2;
+	txt_data += preset[p].dw2;
 	display.print(txt_data);
-	//level 4 ************************Aantal pulsen per rotatie RM1
-	display.setCursor(1, 25);
+	//level 5 ************************Aantal pulsen per rotatie RM1
+	display.setCursor(1, 39);
 	display.write(24);
 	display.print(F("RM1 "));
 
 	txt_data = "";
-	spatie = spaties(preset[currentpreset].holes1, 3); //getal, aantal cyfers in het getal
+	spatie = spaties(preset[p].puls1, 3); //getal, aantal cyfers in het getal
 	for (byte i = 0; i < spatie; i++) {
 		txt_data += " ";
 	}
-	txt_data += preset[currentpreset].holes1;
+	txt_data += preset[p].puls1;
 	display.print(txt_data);
 
-	//level5 *******************Aantal pulsen per rotatie RM2
-	display.setCursor(63, 25);
+	//level6 *******************Aantal pulsen per rotatie RM2
+	display.setCursor(63, 39);
 	display.write(24);
 	display.print(F("RM2  "));
 
 	txt_data = "";
-	spatie = spaties(preset[currentpreset].holes2, 3); //getal, aantal cyfers in het getal
+	spatie = spaties(preset[p].puls2, 3); //getal, aantal cyfers in het getal
 	for (byte i = 0; i < spatie; i++) {
 		txt_data += " ";
 	}
-	txt_data += preset[currentpreset].holes2;
+	txt_data += preset[p].puls2;
 	display.print(txt_data);
-	//Level6 *********************Schaal 1:(data)
-	display.setCursor(1, 37);
-	//display.write(24);
-	display.print(F("Schaal 1:"));
-	display.print(preset[currentpreset].schaal);
-	//Level7 *********************
+	//Level7 *********************Schaal 1:(data)
+	display.setCursor(1, 51);
+	display.write(231);
+	display.print(F(" 1:"));
+	display.print(preset[p].schaal);
+	//Level8 *******************Precisie
+	display.setCursor(63, 51);
+	display.write(245);
+	display.print(F(" "));
+	display.print(preset[p].precisie);
 
 	//onderstreping
 	switch (DP_level) {
-	case 0: //øRM1
+	case 0:
 		display.drawLine(1, 9, 48, 9, WHITE);
 		break;
-	case 1: //øWiel
-		display.drawLine(61, 9, 115, 9, WHITE);
+	case 1: //øRM1
+		display.drawLine(1, 23, 48, 23, WHITE);
 		break;
-	case 2: //øRM2
-		display.drawLine(1, 21, 48, 21, WHITE);
+	case 2: //øWiel
+		display.drawLine(61, 23, 115, 23, WHITE);
 		break;
-	case 3: //øWiel2
-		display.drawLine(61, 21, 115, 21, WHITE);
+	case 3: //øRM2
+		display.drawLine(1, 35, 48, 35, WHITE);
 		break;
-	case 4://↑RM1
-		display.drawLine(1, 33, 48, 33, WHITE);
+	case 4: //øWiel2
+		display.drawLine(61, 35, 115, 35, WHITE);
 		break;
-	case 5: //↑RM2
-		display.drawLine(61, 33, 115, 33, WHITE);
+	case 5://↑RM1
+		display.drawLine(1, 47, 48, 47, WHITE);
 		break;
-	case 6: //Schaal 
-		display.drawLine(1, 45, 62, 45, WHITE);
+	case 6: //↑RM2
+		display.drawLine(61, 47, 115, 47, WHITE);
+		break;
+	case 7: //Schaal 
+		display.drawLine(1, 59, 34, 59, WHITE);
+		break;
+	case 8: //precisie
+		display.drawLine(61, 59, 84, 59, WHITE);
 		break;
 	}
 }
@@ -490,7 +599,7 @@ void SW_exe() { //called from loop() every 20ms
 				}
 			}
 		}
-		
+
 	}
 	else { //dus geen verandering, scrollen.
 		if (ss != 15) { //dus switch ingedrukt
@@ -518,7 +627,7 @@ void SW_clear() {
 
 void SW_on(byte sw) {
 
-	Serial.print(F("Switch-on: ")); Serial.println(sw);
+	//Serial.print(F("Switch-on: ")); Serial.println(sw);
 
 	switch (sw) {
 	case 0:
@@ -535,7 +644,7 @@ void SW_on(byte sw) {
 		case 1:
 			//next parameter
 			DP_level++;
-			if (DP_level > 6)DP_level = 0;
+			if (DP_level > 8)DP_level = 0;
 			break;
 		}
 		break;
@@ -547,26 +656,32 @@ void SW_on(byte sw) {
 		case 1://value down
 
 			switch (DP_level) {
-			case 0: //rm1 roller
-				preset[currentpreset].dr1--;
+			case 0:
+				if (p > 0) p--;
 				break;
-			case 1://rm1 Wiel
-				preset[currentpreset].dw1--;
+			case 1: //rm1 roller
+				preset[p].dr1--;
 				break;
-			case 2://rm2 roller
-				preset[currentpreset].dr2--;
+			case 2://rm1 Wiel
+				preset[p].dw1--;
 				break;
-			case 3://rm2 wiel
-				preset[currentpreset].dw2--;
+			case 3://rm2 roller
+				preset[p].dr2--;
 				break;
-			case 4://rm1 pulsen per rotatie
-				preset[currentpreset].holes1--;
+			case 4://rm2 wiel
+				preset[p].dw2--;
 				break;
-			case 5://rm2 pulsen per rotatie
-				preset[currentpreset].holes2--;
+			case 5://rm1 pulsen per rotatie
+				preset[p].puls1--;
 				break;
-			case 6:// schaal 1: value
-				preset[currentpreset].schaal--;
+			case 6://rm2 pulsen per rotatie
+				preset[p].puls2--;
+				break;
+			case 7:// schaal 1: value
+				preset[p].schaal--;
+				break;
+			case 8:
+				if (preset[p].precisie > 0) preset[p].precisie--;
 				break;
 			}
 			break;
@@ -577,30 +692,37 @@ void SW_on(byte sw) {
 
 		switch (DP_type) {
 		case 0:
+			MEM_reg ^= (1 << 2); //toon welk RPM roller/wiel getoond wordt
 			break;
-		case 1:	//value up
 
+		case 1:	//value up
 			switch (DP_level) {
-			case 0: //rm1 roller
-				preset[currentpreset].dr1++;
+			case 0:
+				if (p < 5)p++;
 				break;
-			case 1://rm1 Wiel
-				preset[currentpreset].dw1++;
+			case 1: //rm1 roller
+				preset[p].dr1++;
 				break;
-			case 2://rm2 roller
-				preset[currentpreset].dr2++;
+			case 2://rm1 Wiel
+				preset[p].dw1++;
 				break;
-			case 3://rm2 wiel
-				preset[currentpreset].dw2++;
+			case 3://rm2 roller
+				preset[p].dr2++;
 				break;
-			case 4://rm1 pulsen per rotatie
-				preset[currentpreset].holes1++;
+			case 4://rm2 wiel
+				preset[p].dw2++;
 				break;
-			case 5://rm2 pulsen per rotatie
-				preset[currentpreset].holes2++;
+			case 5://rm1 pulsen per rotatie
+				preset[p].puls1++;
 				break;
-			case 6:// schaal 1: value
-				preset[currentpreset].schaal++;
+			case 6://rm2 pulsen per rotatie
+				preset[p].puls2++;
+				break;
+			case 7:// schaal 1: value
+				preset[p].schaal++;
+				break;
+			case 8: //precisie
+				if (preset[p].precisie < 12)preset[p].precisie++;
 				break;
 			}
 

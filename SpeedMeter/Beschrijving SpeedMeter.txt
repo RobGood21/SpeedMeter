@@ -12,7 +12,8 @@ Om van de display libraries af te komen.
 MEM_reg
 bit0  toon kmh true, rpm false in groot venster
 bit1 Toon PM1 in main true, RM2 in main false
-
+bit2 in RPM mode, toon rpm van roller true, toon rpm van wiel van voertuig false
+bit3 in KMh mode, toon KMh 1:1 true, toon KMh op schaal 1:87 false
 
 General purpose registers
 GPIOR0
@@ -23,10 +24,19 @@ bit3 nc
 
 
 EEPROM
-MEM_reg=100
-DP_type 102
-drm1 110
-drm2 111
-drmw1 112
-drmw2 113
-schaal 114
+MEM_reg=10
+DP_type 11
+p 12 p=currentpreset
+
+
+drm1 100
+drm2 101
+drmw1 102
+drmw2 103
+puls1 104
+puls2 105
+schaal 106
+precisie 107
+
+
+
