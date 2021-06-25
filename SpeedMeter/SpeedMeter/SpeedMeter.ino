@@ -100,18 +100,23 @@ void setup() {
 	display.display();
 	// display.drawPixel(x, y, color)
 
-
-	GPIOR0 = 0;
 	//Poorten en pins definieren
 	DDRD |= (1 << 7); //Pin 7 Groene led, output
 	DDRD |= (1 << 6); //Pin 6 Rode led
+	DDRD |= (1 << 5); //PIN5 INT1 enabled
+	DDRD |= (1 << 4); //PIN4 INT0 enabled
 	//pin 8~11 4 xschakelaar input
 	DDRB &= ~(15 << 0);
 	PORTB |= (15 << 0); //pull-up to pins 8~11
+	PORTD &= ~(1 << 5); 
+	PORTD &= ~(1 << 4);
+
+
 
 //define interrupt
 	//Interupt on rising edge PIN2, INT0
 	//01 = any change 10=falling edge 11=rising edge
+
 	EICRA |= (1 << 0); //set bit0 of register ISC00 (rising edge both)
 	EICRA |= (1 << 1); //set bit1 of register ISC01
 
@@ -133,11 +138,12 @@ void setup() {
 
 
 ISR(INT0_vect) {
-	cli();
+	//cli();
 	countstop = 0;
+
 	if (micros() - antidender[0] > dender[0]) {
-		//preset[p].holes1) {
-		antidender[0] = micros();
+		antidender[0] = micros(); //reset timer
+
 		holecount1++;
 		if (holecount1 >= preset[p].puls1) {
 			holecount1 = 0;
@@ -148,8 +154,10 @@ ISR(INT0_vect) {
 			oldtime1 = SD_times[0];
 			calc(false);
 		}
-	}
-	sei();
+
+}
+	
+	//sei();
 }
 
 
@@ -157,7 +165,7 @@ ISR(INT0_vect) {
 ISR(INT1_vect) {
 
 	//denk dat die struct volatile moet worden anders tussen variabel voor maken INT0 doettu welll
-	cli();
+	//cli();
 	countstop = 0;
 	if (micros() - antidender[1] > dender[1]) {
 		antidender[1] = micros();
@@ -172,7 +180,7 @@ ISR(INT1_vect) {
 			calc(true);
 		}
 	}
-	sei();
+	//sei();
 }
 
 
@@ -181,7 +189,7 @@ void loop() {
 	if (millis() - slowtime > 20) {
 		slowtime = millis();
 		countstop++;
-		if (countstop > 5) {
+		if (countstop > 10) {
 			RPM1 = 0;
 			RPM2 = 0;
 			PORTD &= ~(B11000000 << 0); //leds uit			
@@ -274,7 +282,7 @@ void R_dender() {
 	dender[0] = temp / preset[p].puls1;
 	dender[1] = temp / preset[p].puls2;
 
-	Serial.print("Dender 0 = "); Serial.print(dender[0]); Serial.print("  Dender 1 = "); Serial.println(dender[1]);
+	//Serial.print("Dender 0 = "); Serial.print(dender[0]); Serial.print("  Dender 1 = "); Serial.println(dender[1]);
 
 }
 
@@ -308,8 +316,8 @@ void scherm1() {
 	String txt_data = "";
 	String txt_type; String txt_rm;
 	byte spatie = 0;
-	int speed; //Voor RPM
-	float snelheid; //voor KMh
+	unsigned long speed=0; //Voor RPM
+	unsigned long rest;
 
 
 	//Main venster
@@ -340,31 +348,63 @@ void scherm1() {
 		}
 
 	}
-	else { //Mainvenster kmh
+
+	else { //Mainvenster kmh		
+
+		
+
+		txt_data = "";
 		txt_rm = F("RM");
 		txt_type += F("KMh");
 
 		if (MEM_reg & (1 << 1)) { //RM1
+		
 			txt_rm += F("1");
-			snelheid = RPM1 * preset[p].dr1*3.14;
+			//rotatie per minuut x omtrek x 60 minuten = afgelegde afstand in mm
+			speed = RPM1 * preset[p].dr1*3.14 * 60;
 		}
 		else {
 			txt_rm += F("2"); //RM2
+			speed = RPM2 * preset[p].dr2*3.14 * 60;
+		}
+
+		display.drawLine(80, 41, 110, 41, WHITE);
+		display.drawLine(80, 53, 110, 53, WHITE);
+		display.setCursor(85, 44);
+		display.setTextSize(1);
+		display.setTextColor(WHITE);
+	
+		display.print(F("1:"));
+		if (MEM_reg & (1 << 3)) { //snelheid tonen 1:1
+			display.print("1");			
+		}
+		else { //snelheid tonen op schaal
+			speed = speed * preset[p].schaal;
+			display.print(preset[p].schaal);
+			display.setCursor(120, 1);
+			display.write(231);
 		}
 	
-		snelheid = snelheid*60 / 100000;
-		
-		txt_data += snelheid;
 
+		speed = speed / 10000;
+		//laatste cyfer berekenen
+		rest = speed;
+		while (rest > 9) {
+			rest = rest - 10;
+		}
+		speed = speed / 10;
+		if (rest > 4)speed++;
 	}
-
 
 	spatie = spaties(speed, 5); //getal, aantal cyfers in het getal
-	for (byte i = 0; i < spatie; i++) {
+		for (byte i = 0; i < spatie; i++) {
 		txt_data += " ";
+		
 	}
-	txt_data += speed;
+		
+	txt_data += speed;	
 
+	//
 	display.setTextColor(WHITE);
 	display.setTextSize(3);
 	display.setCursor(1, 5);
@@ -404,18 +444,13 @@ void scherm1() {
 	txt_data += speed;
 	display.setCursor(33, 48);
 	display.print(txt_data);
-
-	// Rechter onder klein venster
-
-
-
-
-
-
-
 }
 
+bool rest() {
 
+
+	return rest;
+}
 
 void scherm2() {
 	//programmeer venster	
@@ -626,9 +661,7 @@ void SW_clear() {
 }
 
 void SW_on(byte sw) {
-
 	//Serial.print(F("Switch-on: ")); Serial.println(sw);
-
 	switch (sw) {
 	case 0:
 		//wisseld scherm
@@ -692,7 +725,14 @@ void SW_on(byte sw) {
 
 		switch (DP_type) {
 		case 0:
-			MEM_reg ^= (1 << 2); //toon welk RPM roller/wiel getoond wordt
+			if (~MEM_reg & (1 << 0)) { //KMh mode
+				MEM_reg ^= (1 << 3); //snelheid op schaal of 1:1
+			}
+			else { //RPM mode
+				MEM_reg ^= (1 << 2); //toon welk RPM roller/wiel getoond wordt
+			}
+
+
 			break;
 
 		case 1:	//value up

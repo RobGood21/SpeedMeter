@@ -9,15 +9,19 @@ Om van de display libraries af te komen.
 		//I2C_send(0xAE);
 		//I2C_send(0xAF);
 
+
+
+
+
 MEM_reg
-bit0  toon kmh true, rpm false in groot venster
+bit0  toon kmh false, rpm true in groot venster
 bit1 Toon PM1 in main true, RM2 in main false
 bit2 in RPM mode, toon rpm van roller true, toon rpm van wiel van voertuig false
 bit3 in KMh mode, toon KMh 1:1 true, toon KMh op schaal 1:87 false
 
 General purpose registers
 GPIOR0
-bit0 nc
+bit0 enable INT0 true, disable false
 bit1 nc
 bit2 nc
 bit3 nc
