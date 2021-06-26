@@ -194,7 +194,7 @@ void loop() {
 			RPM2 = 0;
 			PORTD &= ~(B11000000 << 0); //leds uit			
 		}
-		//SD_exe(); //sends pulses to  simpledyno via serial connection
+		SD_exe(); //sends pulses to  simpledyno via serial connection
 		SW_exe();
 		//tekens(); //gebruiken om speciaal teken op te zoeken
 		DP_exe();
