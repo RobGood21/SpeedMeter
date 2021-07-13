@@ -5,6 +5,11 @@
 
  Use of library: https://github.com/acrobotic/Ai_Ardulib_SSD1306
 
+
+ V1.01 26 juni 2021
+ Eerste versie, verder werken als hardware SpeedMeter klaar is. 
+ Ervaringen en evaluatie gebruikers met verschillende type sensoren en rollerbanken is nodig.
+
 */
 
 
@@ -351,8 +356,6 @@ void scherm1() {
 
 	else { //Mainvenster kmh		
 
-		
-
 		txt_data = "";
 		txt_rm = F("RM");
 		txt_type += F("KMh");
@@ -386,7 +389,7 @@ void scherm1() {
 		}
 	
 
-		speed = speed / 10000;
+		speed = speed / 100000;
 		//laatste cyfer berekenen
 		rest = speed;
 		while (rest > 9) {
