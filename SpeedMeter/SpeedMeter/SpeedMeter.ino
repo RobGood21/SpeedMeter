@@ -9,6 +9,8 @@
  V1.01 26 juni 2021
  Eerste versie, verder werken als hardware SpeedMeter klaar is. 
  Ervaringen en evaluatie gebruikers met verschillende type sensoren en rollerbanken is nodig.
+ Werkt alleen met simpleDyno en gemonteerde display
+ Display in twee typen op de markt let op de maten gaten 27mm en 28mm uit elkaar (allGoods)
 
 */
 
