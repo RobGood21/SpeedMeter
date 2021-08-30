@@ -93,11 +93,8 @@ unsigned int rpm2old = 0;
 unsigned int countstop = 0;
 
 unsigned long SCtime; // tbv SpeedCat/Itrain
-byte pulsSC; //puls counter tbv SpeedCat
-
-
-
-
+int countSC = 0; //puls counter tbv SpeedCat
+char txtSC[80];
 
 byte DP_type = 0; //EEPROM #101 welk scherm wordt getoond, wisseld met knop 4
 byte DP_level = 0;
@@ -162,14 +159,19 @@ void setup() {
 
 ISR(INT0_vect) {
 	//cli();
+	//Deze ook gebruiken voor Speed-Cat
 	countstop = 0;
-
+	countSC++;
 	if (micros() - antidender[0] > dender[0]) {
 		antidender[0] = micros(); //reset timer
+
+		//speedCat counter, puls tellen
+
 
 		holecount1++;
 		if (holecount1 >= preset[p].puls1) {
 			holecount1 = 0;
+			
 			PIND |= (1 << 6);
 
 			SD_times[0] = micros();
@@ -182,8 +184,6 @@ ISR(INT0_vect) {
 
 	//sei();
 }
-
-
 
 ISR(INT1_vect) {
 
@@ -213,13 +213,14 @@ void loop() {
 
 
 	if (MEM_reg & (1 << 4)) { //send data to SpeedCat app or Itrain
-		if (millis()-SCtime > 996) { //1sec
-			SCtime = millis();
+		if (millis() - SCtime > 996) { //1sec
+
 			SC_exe();
+			SCtime = millis();
 		}
 	}
 
-	if (millis() - slowtime > 20) {
+	if (millis() - slowtime > 20) { //20
 		slowtime = millis();
 
 		countstop++;
@@ -228,12 +229,12 @@ void loop() {
 			RPM2 = 0;
 			PORTD &= ~(B11000000 << 0); //leds uit			
 		}
-		
-		if(~MEM_reg & (1<<4)) SD_exe(); //sends pulses to  simpledyno via serial connection
-		
+
+		if (~MEM_reg & (1 << 4)) SD_exe(); //sends msg to  simpledyno via serial connection
+
 		SW_exe();
 		//tekens(); //gebruiken om speciaal teken op te zoeken
-		DP_exe();
+		DP_exe(); //dit proces duurt te lang! vertraagd de time based processen te veel 
 	}
 }
 
@@ -819,12 +820,20 @@ void SW_off(byte sw) {
 void SC_exe() {
 	//stuurt boodschap over USB poort ten behoeve van SpeedCat (Itrain compatibel)
 	unsigned int tijd;
+	unsigned int pls = 0;
 	tijd = millis() - oldtime;
+	//aantal pulsen per rotatie doorgeven
+	//instelbaar voor verschillende rollerbanken te gebruiken.
+	//vermoed default 4 instellen 1~25
 
-	Serial.println(tijd);
+	pls = (countSC * 4) / preset[p].puls1; //4 nog instelbaar maken
+
+	sprintf(txtSC, "*%04d;V3.0%s", pls, "%");
+	Serial.println(txtSC);
+
+	//Serial.print(tijd);Serial.print("   Puls: "); Serial.println(countSC);
 	oldtime = millis();
-
-
+	countSC = 0;
 }
 
 void SD_exe() {
