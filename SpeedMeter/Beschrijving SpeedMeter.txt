@@ -18,6 +18,8 @@ bit0  toon kmh false, rpm true in groot venster
 bit1 Toon PM1 in main true, RM2 in main false
 bit2 in RPM mode, toon rpm van roller true, toon rpm van wiel van voertuig false
 bit3 in KMh mode, toon KMh 1:1 true, toon KMh op schaal 1:87 false
+bit4 true: USB>Itrain, Speed-Cat   False: USB>Simpledyno
+
 
 General purpose registers
 GPIOR0

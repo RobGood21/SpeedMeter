@@ -7,12 +7,19 @@
 
 
  V1.01 26 juni 2021
- Eerste versie, verder werken als hardware SpeedMeter klaar is. 
+ Eerste versie, verder werken als hardware SpeedMeter klaar is.
  Ervaringen en evaluatie gebruikers met verschillende type sensoren en rollerbanken is nodig.
  Werkt alleen met simpleDyno en gemonteerde display
  Display in twee typen op de markt let op de maten gaten 27mm en 28mm uit elkaar (allGoods)
 
+ V2.01
+ Versie zichtbaar maken in display
+ 0 waardes  onmogelijk maken
+ Toepassing van 'KPF Zeller Speed-Cat' als sensor mogelijk maken.
+ Itrain met gebruik van 'KPF Zeller Speed-Cat' instelling koppelen (iTrain 5.0 - Handleiding blz.72)
+
 */
+
 
 
 #include <EEPROM.h>
@@ -20,6 +27,9 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+
+#define Version "V2.01"
+
 
 //Display
 //Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
@@ -73,9 +83,6 @@ byte holecount1; byte holecount2;
 unsigned int dender[2];
 unsigned long antidender[2];
 
-
-
-
 int switchstatus = 15;
 byte switchcount[4];
 
@@ -85,6 +92,12 @@ unsigned int rpm1old = 0;
 unsigned int rpm2old = 0;
 unsigned int countstop = 0;
 
+unsigned long SCtime; // tbv SpeedCat/Itrain
+byte pulsSC; //puls counter tbv SpeedCat
+
+
+
+
 
 byte DP_type = 0; //EEPROM #101 welk scherm wordt getoond, wisseld met knop 4
 byte DP_level = 0;
@@ -93,6 +106,9 @@ byte MEM_reg; //EEPROM #100
 //temps
 int countsign = 0;
 unsigned long counttekens; //gebruikt om tekens te kunnen opzoeken, in loop opnemen
+unsigned long oldtime;
+
+
 
 void setup() {
 	Serial.begin(9600);
@@ -115,14 +131,14 @@ void setup() {
 	//pin 8~11 4 xschakelaar input
 	DDRB &= ~(15 << 0);
 	PORTB |= (15 << 0); //pull-up to pins 8~11
-	PORTD &= ~(1 << 5); 
+	PORTD &= ~(1 << 5);
 	PORTD &= ~(1 << 4);
 
 
 
-//define interrupt
-	//Interupt on rising edge PIN2, INT0
-	//01 = any change 10=falling edge 11=rising edge
+	//define interrupt
+		//Interupt on rising edge PIN2, INT0
+		//01 = any change 10=falling edge 11=rising edge
 
 	EICRA |= (1 << 0); //set bit0 of register ISC00 (rising edge both)
 	EICRA |= (1 << 1); //set bit1 of register ISC01
@@ -162,8 +178,8 @@ ISR(INT0_vect) {
 			calc(false);
 		}
 
-}
-	
+	}
+
 	//sei();
 }
 
@@ -192,21 +208,35 @@ ISR(INT1_vect) {
 
 
 void loop() {
+	//unsigned long time;
+	//time = millis();
+
+
+	if (MEM_reg & (1 << 4)) { //send data to SpeedCat app or Itrain
+		if (millis()-SCtime > 996) { //1sec
+			SCtime = millis();
+			SC_exe();
+		}
+	}
 
 	if (millis() - slowtime > 20) {
 		slowtime = millis();
+
 		countstop++;
 		if (countstop > 10) {
 			RPM1 = 0;
 			RPM2 = 0;
 			PORTD &= ~(B11000000 << 0); //leds uit			
 		}
-		SD_exe(); //sends pulses to  simpledyno via serial connection
+		
+		if(~MEM_reg & (1<<4)) SD_exe(); //sends pulses to  simpledyno via serial connection
+		
 		SW_exe();
 		//tekens(); //gebruiken om speciaal teken op te zoeken
 		DP_exe();
 	}
 }
+
 void factory() {
 	for (int i = 0; i < EEPROM.length(); i++) {
 		EEPROM.update(i, 0xFF);
@@ -323,7 +353,7 @@ void scherm1() {
 	String txt_data = "";
 	String txt_type; String txt_rm;
 	byte spatie = 0;
-	unsigned long speed=0; //Voor RPM
+	unsigned long speed = 0; //Voor RPM
 	unsigned long rest;
 
 
@@ -363,7 +393,7 @@ void scherm1() {
 		txt_type += F("KMh");
 
 		if (MEM_reg & (1 << 1)) { //RM1
-		
+
 			txt_rm += F("1");
 			//rotatie per minuut x omtrek x 60 minuten = afgelegde afstand in mm
 			speed = RPM1 * preset[p].dr1*3.14 * 60;
@@ -378,10 +408,10 @@ void scherm1() {
 		display.setCursor(85, 44);
 		display.setTextSize(1);
 		display.setTextColor(WHITE);
-	
+
 		display.print(F("1:"));
 		if (MEM_reg & (1 << 3)) { //snelheid tonen 1:1
-			display.print("1");			
+			display.print("1");
 		}
 		else { //snelheid tonen op schaal
 			speed = speed * preset[p].schaal;
@@ -389,7 +419,7 @@ void scherm1() {
 			display.setCursor(120, 1);
 			display.write(231);
 		}
-	
+
 
 		speed = speed / 100000;
 		//laatste cyfer berekenen
@@ -402,12 +432,12 @@ void scherm1() {
 	}
 
 	spatie = spaties(speed, 5); //getal, aantal cyfers in het getal
-		for (byte i = 0; i < spatie; i++) {
+	for (byte i = 0; i < spatie; i++) {
 		txt_data += " ";
-		
+
 	}
-		
-	txt_data += speed;	
+
+	txt_data += speed;
 
 	//
 	display.setTextColor(WHITE);
@@ -451,11 +481,11 @@ void scherm1() {
 	display.print(txt_data);
 }
 
-bool rest() {
+//bool rest() {
 
 
-	return rest;
-}
+	//return rest;
+//}
 
 void scherm2() {
 	//programmeer venster	
@@ -468,6 +498,9 @@ void scherm2() {
 	display.setCursor(1, 1);
 	display.print(F("Preset "));
 	display.print(p + 1);
+	display.setCursor(95, 1);
+	display.print(Version);
+
 
 	//level1********************Diameter roller 1
 	display.setCursor(1, 15);
@@ -589,8 +622,6 @@ void tekens() { //opnemen in loop overige display acties uitschakelen
 	if (millis() - counttekens > 500) {
 		display.clearDisplay();
 		counttekens = millis();
-
-
 		display.setTextColor(WHITE);
 		display.setTextSize(3);
 		display.setCursor(1, 5);
@@ -698,25 +729,25 @@ void SW_on(byte sw) {
 				if (p > 0) p--;
 				break;
 			case 1: //rm1 roller
-				preset[p].dr1--;
+				if (preset[p].dr1 > 1) preset[p].dr1--;
 				break;
 			case 2://rm1 Wiel
-				preset[p].dw1--;
+				if (preset[p].dw1 > 1) preset[p].dw1--;
 				break;
 			case 3://rm2 roller
-				preset[p].dr2--;
+				if (preset[p].dr2 > 1) preset[p].dr2--;
 				break;
 			case 4://rm2 wiel
-				preset[p].dw2--;
+				if (preset[p].dw2 > 1) preset[p].dw2--;
 				break;
 			case 5://rm1 pulsen per rotatie
-				preset[p].puls1--;
+				if (preset[p].puls1 > 1) preset[p].puls1--;
 				break;
 			case 6://rm2 pulsen per rotatie
-				preset[p].puls2--;
+				if (preset[p].puls2 > 1) preset[p].puls2--;
 				break;
 			case 7:// schaal 1: value
-				preset[p].schaal--;
+				if (preset[p].schaal > 1) preset[p].schaal--;
 				break;
 			case 8:
 				if (preset[p].precisie > 0) preset[p].precisie--;
@@ -746,25 +777,25 @@ void SW_on(byte sw) {
 				if (p < 5)p++;
 				break;
 			case 1: //rm1 roller
-				preset[p].dr1++;
+				if (preset[p].dr1 < 250) preset[p].dr1++;
 				break;
 			case 2://rm1 Wiel
-				preset[p].dw1++;
+				if (preset[p].dw1 < 250) preset[p].dw1++;
 				break;
 			case 3://rm2 roller
-				preset[p].dr2++;
+				if (preset[p].dr2 < 250) preset[p].dr2++;
 				break;
 			case 4://rm2 wiel
-				preset[p].dw2++;
+				if (preset[p].dw2 < 250) preset[p].dw2++;
 				break;
 			case 5://rm1 pulsen per rotatie
-				preset[p].puls1++;
+				if (preset[p].puls1 < 250) preset[p].puls1++;
 				break;
 			case 6://rm2 pulsen per rotatie
-				preset[p].puls2++;
+				if (preset[p].puls2 < 250) preset[p].puls2++;
 				break;
 			case 7:// schaal 1: value
-				preset[p].schaal++;
+				if (preset[p].schaal < 250) preset[p].schaal++;
 				break;
 			case 8: //precisie
 				if (preset[p].precisie < 12)preset[p].precisie++;
@@ -785,6 +816,17 @@ void tekens(byte teken) {
 void SW_off(byte sw) {
 
 }
+void SC_exe() {
+	//stuurt boodschap over USB poort ten behoeve van SpeedCat (Itrain compatibel)
+	unsigned int tijd;
+	tijd = millis() - oldtime;
+
+	Serial.println(tijd);
+	oldtime = millis();
+
+
+}
+
 void SD_exe() {
 	//berekend en sends message over serial port to SympleDyno
 	//SD_times[2] = SD_times[0];
