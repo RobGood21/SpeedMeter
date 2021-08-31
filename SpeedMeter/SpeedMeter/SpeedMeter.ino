@@ -14,9 +14,12 @@
 
  V2.01
  Versie zichtbaar maken in display
- 0 waardes  onmogelijk maken
+ 
  Toepassing van 'KPF Zeller Speed-Cat' als sensor mogelijk maken.
  Itrain met gebruik van 'KPF Zeller Speed-Cat' instelling koppelen (iTrain 5.0 - Handleiding blz.72)
+ bugsfixes:
+0 waardes  onmogelijk maken fixed
+Presets 2~6 werden niet goed in EEPROM opgeslagen. Fixed
 
 */
 
@@ -29,6 +32,7 @@
 #include <Adafruit_SSD1306.h>
 
 #define Version "V2.01"
+//#define Dsc 7 //doorsnede van de roller waar Itrain en Speed-cat mee rekenen (waarschijnlijk..)
 
 
 //Display
@@ -70,6 +74,8 @@ struct PRESETS {
 	byte dw2; //diameter wiel voertuig op RM2
 	byte puls1; //20; 5=kwart rotatie rpm x4 aantal pulsen per rotatie, gaatjes in de IR disc
 	byte puls2;
+	byte pulsIt; //aantal pulsen per rotatie naar Itrain Speed-Cat waarschijnlijk vast 4 (x2 meet alle changes up en down)
+	byte Dsc; //diameter sc speedcat, met welke diameter mm/10 rekend Itrain, te gebruiken voor Yken
 	byte schaal;
 	byte precisie; //1~10  1 voor langzame metingen 10 voor extreem snelle metingen 5 = default gemiddeld
 };
@@ -171,7 +177,7 @@ ISR(INT0_vect) {
 		holecount1++;
 		if (holecount1 >= preset[p].puls1) {
 			holecount1 = 0;
-			
+
 			PIND |= (1 << 6);
 
 			SD_times[0] = micros();
@@ -213,29 +219,32 @@ void loop() {
 
 
 	if (MEM_reg & (1 << 4)) { //send data to SpeedCat app or Itrain
-		if (millis() - SCtime > 996) { //1sec
+
+
+
+		if (millis() - SCtime > 999) { //1sec
 
 			SC_exe();
 			SCtime = millis();
 		}
 	}
 
-	if (millis() - slowtime > 20) { //20
-		slowtime = millis();
-
-		countstop++;
-		if (countstop > 10) {
-			RPM1 = 0;
-			RPM2 = 0;
-			PORTD &= ~(B11000000 << 0); //leds uit			
+	if (millis() - SCtime < 950) { //slow events niet vlak voor een telling uitvoeren
+		if (millis() - slowtime > 20) { //20 
+			slowtime = millis();
+			countstop++;
+			if (countstop > 10) {
+				RPM1 = 0;
+				RPM2 = 0;
+				PORTD &= ~(B11000000 << 0); //leds uit			
+			}
+			if (~MEM_reg & (1 << 4)) SD_exe(); //sends msg to  simpledyno via serial connection
+			SW_exe();
+			//tekens(); //gebruiken om speciaal teken op te zoeken
+			DP_exe(); //dit proces duurt te lang! vertraagd de time based processen te veel 
 		}
-
-		if (~MEM_reg & (1 << 4)) SD_exe(); //sends msg to  simpledyno via serial connection
-
-		SW_exe();
-		//tekens(); //gebruiken om speciaal teken op te zoeken
-		DP_exe(); //dit proces duurt te lang! vertraagd de time based processen te veel 
 	}
+
 }
 
 void factory() {
@@ -276,6 +285,8 @@ void MEM_read() {
 		preset[i].puls2 = EEPROM.read(105 + (i * 10));
 		preset[i].schaal = EEPROM.read(106 + (i * 10));
 		preset[i].precisie = EEPROM.read(107 + (i * 10));
+		preset[i].pulsIt = EEPROM.read(108 + (i * 10));
+		preset[i].Dsc = EEPROM.read(109 + (i * 10));//ijken
 
 		if (preset[i].dr1 == 0xFF)preset[i].dr1 = 20;
 		if (preset[i].dr2 == 0xFF)preset[i].dr2 = 20;
@@ -285,24 +296,30 @@ void MEM_read() {
 		if (preset[i].puls2 == 0xFF)preset[i].puls2 = 1;
 		if (preset[i].schaal == 0xFF)preset[i].schaal = 1;
 		if (preset[i].precisie == 0xFF)preset[i].precisie = 6;
+		if (preset[i].pulsIt == 0xFF)preset[i].pulsIt = 4; //waarschijnlijk standaard... 
+		if (preset[i].Dsc == 0xFF)preset[i].Dsc = 63; ////diameter mm/10 roller waar Itrain/speedcat mee rekenen, ijken
 	}
 
 
 }
 void MEM_write() {
 	//updates EEPROM, vaak.... dus als rare fouten na enkele jaren denkbaar EEPROM defect van de arduino
+	byte xtr=10*p;
 	EEPROM.update(10, MEM_reg);
 	EEPROM.update(11, DP_type);
 	EEPROM.update(12, p);
+
 	//alleen de current preset p hoeft te worden geupdated.
-	EEPROM.update(100, preset[p].dr1);
-	EEPROM.update(101, preset[p].dr2);
-	EEPROM.update(102, preset[p].dw1);
-	EEPROM.update(103, preset[p].dw2);
-	EEPROM.update(104, preset[p].puls1);
-	EEPROM.update(105, preset[p].puls2);
-	EEPROM.update(106, preset[p].schaal);
-	EEPROM.update(107, preset[p].precisie);
+	EEPROM.update(100+xtr, preset[p].dr1);
+	EEPROM.update(101+xtr, preset[p].dr2);
+	EEPROM.update(102+xtr, preset[p].dw1);
+	EEPROM.update(103+xtr, preset[p].dw2);
+	EEPROM.update(104+xtr, preset[p].puls1);
+	EEPROM.update(105+xtr, preset[p].puls2);
+	EEPROM.update(106+xtr, preset[p].schaal);
+	EEPROM.update(107+xtr, preset[p].precisie);
+	EEPROM.update(108+xtr, preset[p].pulsIt);
+	EEPROM.update(109+xtr, preset[p].Dsc);
 
 	R_dender(); //bereken denderwaardes, van precisie
 
@@ -578,13 +595,14 @@ void scherm2() {
 	display.print(txt_data);
 	//Level7 *********************Schaal 1:(data)
 	display.setCursor(1, 51);
-	display.write(231);
-	display.print(F(" 1:"));
+	//display.write(231); //symbool
+	display.print(F("1:"));
 	display.print(preset[p].schaal);
 	//Level8 *******************Precisie
-	display.setCursor(63, 51);
+
+	display.setCursor(35, 51);
 	display.write(245);
-	display.print(F(" "));
+	//display.print(F(" "));
 	display.print(preset[p].precisie);
 
 	//onderstreping
@@ -611,10 +629,10 @@ void scherm2() {
 		display.drawLine(61, 47, 115, 47, WHITE);
 		break;
 	case 7: //Schaal 
-		display.drawLine(1, 59, 34, 59, WHITE);
+		display.drawLine(1, 59, 25, 59, WHITE);
 		break;
 	case 8: //precisie
-		display.drawLine(61, 59, 84, 59, WHITE);
+		display.drawLine(33, 59, 50, 59, WHITE);
 		break;
 	}
 }
@@ -819,20 +837,32 @@ void SW_off(byte sw) {
 }
 void SC_exe() {
 	//stuurt boodschap over USB poort ten behoeve van SpeedCat (Itrain compatibel)
-	unsigned int tijd;
+	//unsigned int tijd;
 	unsigned int pls = 0;
-	tijd = millis() - oldtime;
+	float dia; //aantal pulsen uitrekenen
+	//onderstaand kan in 1 berekening
+	dia = preset[p].dr1; //diameter roller 1
+	dia = dia / preset[p].Dsc * 10; //roller Dsc = in tienden mm
+	dia = dia / preset[p].puls1;
+
+	//tijd = millis() - oldtime;
 	//aantal pulsen per rotatie doorgeven
 	//instelbaar voor verschillende rollerbanken te gebruiken.
-	//vermoed default 4 instellen 1~25
 
-	pls = (countSC * 4) / preset[p].puls1; //4 nog instelbaar maken
-
+	//pls = (countSC * preset[p].pulsIt * 2) *(preset[p].dr1 / preset[p].Dsc) / preset[p].puls1; //1 rotatie 6mm doorsnee wiel (8=aantal pulsen)
+	pls = (countSC * preset[p].pulsIt * 2) * dia; //1 rotatie 6mm doorsnee wiel (8=aantal pulsen)
+	
 	sprintf(txtSC, "*%04d;V3.0%s", pls, "%");
+	//sprintf(txtSC, "*%04d;Speedmeter%s", pls, "%");
+
+	//format: * start?  Vereist
+	//puls in 4 decimalen 
+	//txt: V3.0  willekeurige tekst, testen of Itrain dit toont
+	//txtvariabel: % einde, Vereist. misschien zijn er meerder parameters hier? of alleen nodig voor de tekst? 
 	Serial.println(txtSC);
 
-	//Serial.print(tijd);Serial.print("   Puls: "); Serial.println(countSC);
-	oldtime = millis();
+	//Serial.print(tijd); Serial.print("   Puls: "); Serial.println(countSC);
+	//oldtime = millis();
 	countSC = 0;
 }
 
