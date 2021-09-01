@@ -67,8 +67,7 @@ int SW_time; //counter, timer voor zeer langzame processen (1xper 20ms, 50hz)
 
 
 struct PRESETS {
-	byte reg;
-	//bit0=USB output True =Itrain/speedCat false=SimpleDyno
+	byte usb; //0=geen output 1=Itrain/SpeedCat 2=Simpledyn
 	byte dr1; //diameter rol 1 in mm
 	byte dr2; //diameter rol2
 	byte dw1;//diameter wiel voertuig op RM1 
@@ -101,12 +100,12 @@ unsigned int countstop = 0;
 
 unsigned long SCtime; // tbv SpeedCat/Itrain
 int countSC = 0; //puls counter tbv SpeedCat
-char txtSC[80];
+char txtSC[20];
 
 byte DP_type = 0; //EEPROM #101 welk scherm wordt getoond, wisseld met knop 4
 byte DP_level = 0;
 byte MEM_reg; //EEPROM #100
-byte prglvl=9;
+byte prglvl = 9;
 
 //temps
 int countsign = 0;
@@ -138,8 +137,6 @@ void setup() {
 	PORTB |= (15 << 0); //pull-up to pins 8~11
 	PORTD &= ~(1 << 5);
 	PORTD &= ~(1 << 4);
-
-
 
 	//define interrupt
 		//Interupt on rising edge PIN2, INT0
@@ -217,38 +214,36 @@ ISR(INT1_vect) {
 
 void loop() {
 	//unsigned long time;
-	//time = millis();
+	//time = millis();	
 
-	
 
-	if (GPIOR0 & (1 << 2)) { //send data to SpeedCat app or Itrain
+	if (preset[p].usb == 1) { //send data to SpeedCat app or Itrain
 
 		if (millis() - SCtime > 999) { //1sec
-
 			SC_exe();
 			SCtime = millis();
 		}
+		else if (millis() - SCtime > 950) {
+			//slow events niet vlak voor een telling voor Itrain uitvoeren
+			//Slow events duurt te lang ongeveer 30ms, maakt de seconde telling voor Itrain onnauwkeurig
+			//millis() gaat door en de ISR gaat door... 
+			//lelijke oplossing, werkt wel nog eens naar kijken
+			return;
+		}
 	}
 
-
-	//if (millis() - SCtime < 950 | ~GPIOR0 & (1<<2)) { //slow events niet vlak voor een telling voor Itrain uitvoeren
-		if (millis() - slowtime > 20) { //20 
-			slowtime = millis();
-			countstop++;
-			if (countstop > 10) {
-				RPM1 = 0;
-				RPM2 = 0;
-				PORTD &= ~(B11000000 << 0); //leds uit			
-			}
-
-			//if (~GPIOR0 & (1 << 2)) SD_exe(); //sends msg to  simpledyno via serial connection
-
-			SW_exe();
-			//tekens(); //gebruiken om speciaal teken op te zoeken
-			DP_exe(); //dit proces duurt te lang! vertraagd de time based processen te veel 
+	if (millis() - slowtime > 20) { //20 
+		slowtime = millis();
+		countstop++;
+		if (countstop > 10) {
+			RPM1 = 0;
+			RPM2 = 0;
+			PORTD &= ~(B11000000 << 0); //leds uit			
 		}
-	//}
-
+		if (preset[p].usb==2) SD_exe(); //sends msg to  simpledyno via serial connection
+		SW_exe();
+		DP_exe(); //dit proces duurt te lang! vertraagd de time based processen te veel 
+	}
 }
 
 void factory() {
@@ -265,9 +260,6 @@ void factory() {
 }
 
 void MEM_read() {
-	GPIOR0 = 0;
-
-
 
 	//Leest EEPROM na power up
 	MEM_reg = EEPROM.read(10);
@@ -294,7 +286,7 @@ void MEM_read() {
 		preset[i].precisie = EEPROM.read(107 + xtr);
 		preset[i].pulsIt = EEPROM.read(108 + xtr);
 		preset[i].Dsc = EEPROM.read(109 + xtr);//ijken
-		preset[i].reg = EEPROM.read(110 + xtr);
+		preset[i].usb = EEPROM.read(110 + xtr);
 
 		if (preset[i].dr1 == 0xFF)preset[i].dr1 = 20;
 		if (preset[i].dr2 == 0xFF)preset[i].dr2 = 20;
@@ -306,12 +298,8 @@ void MEM_read() {
 		if (preset[i].precisie == 0xFF)preset[i].precisie = 6;
 		if (preset[i].pulsIt == 0xFF)preset[i].pulsIt = 4; //waarschijnlijk standaard... 
 		if (preset[i].Dsc == 0xFF)preset[i].Dsc = 63; ////diameter mm/10 roller waar Itrain/speedcat mee rekenen, ijken
-		//reg==default 0xFF
+		if (preset[i].usb == 0xFF)preset[i].usb = 0; //0=geen usb uit 1=Itrain/SpeedCat 2=SimpleDyno
 	}
-
-	//inits
-	if (preset[p].reg & (1 << 0))GPIOR0 |= (1 << 2); //zet flag voor USB output, It=true Sd=false
-
 }
 void MEM_write() {
 	//updates EEPROM, vaak.... dus als rare fouten na enkele jaren denkbaar EEPROM defect van de arduino
@@ -331,20 +319,10 @@ void MEM_write() {
 	EEPROM.update(107 + xtr, preset[p].precisie);
 	EEPROM.update(108 + xtr, preset[p].pulsIt);
 	EEPROM.update(109 + xtr, preset[p].Dsc);
-	EEPROM.update(110 + xtr, preset[p].reg);
+	EEPROM.update(110 + xtr, preset[p].usb);
 
 	//inits
-	R_dender(); //bereken denderwaardes, van precisie
-
-
-	
-
-	if (preset[p].reg & (1 << 1)) { //USB
-		GPIOR0 |= (1 << 2);
-	}
-	else {
-		GPIOR0 &= ~(1 << 2);
-	}
+	R_dender(); //bereken denderwaardes, van precisie   
 }
 
 void R_dender() {
@@ -631,18 +609,25 @@ void scherm2() {
 
 	//level 9 *****USB 
 	display.setCursor(63, 51);
-	if (preset[p].reg & (1 << 0)) {
+	prglvl = 9;
+	switch (preset[p].usb) {
+	case 0:
+		display.print(F("-"));
+		break;
+	case 1:
 		display.print(F("It"));
-		prglvl = 12;
-	}
-	else {
+		prglvl = 11;
+		display.setCursor(80, 51);
+		display.print(F("Y")); display.print(preset[p].Dsc);
+		display.setCursor(104, 51);
+		display.print(F("P")); display.print(preset[p].pulsIt);
+
+		break;
+	case 2:
 		display.print(F("Sd"));
-		prglvl = 14;
+		break;
 	}
-
-	//display.print(preset[p].precisie);
-
-	//onderstreping
+	//cursor, streep
 	byte x; byte y; byte w;
 	switch (DP_level) {
 	case 0:
@@ -673,7 +658,13 @@ void scherm2() {
 		x = 33; y = 59; w = 50;
 		break;
 	case 9: //USB
-		x = 61; y = 59; w = 78;
+		x = 61; y = 59; w = 75;
+		break;
+	case 10:
+		x = 79; y = 59; w = 97;
+		break;
+	case 11:
+		x = 103; y = 59; w = 116;
 		break;
 	}
 	display.drawLine(x, y, w, y, 1);
@@ -811,10 +802,16 @@ void SW_on(byte sw) {
 				if (preset[p].schaal > 1) preset[p].schaal--;
 				break;
 			case 8:
-				if (preset[p].precisie > 0) preset[p].precisie--;
+				if (preset[p].precisie > 1) preset[p].precisie--;
 				break;
 			case 9: //USB type
-				preset[p].reg ^= (1 << 0); //flip bit 0
+				if (preset[p].usb > 0) preset[p].usb--;
+				break;
+			case 10: //ijken, doorsnede rollerwiel zoals Itrain/Speedcat dit verwerkt
+				if (preset[p].Dsc > 1)preset[p].Dsc--;
+				break;
+			case 11:
+				if (preset[p].pulsIt > 1)preset[p].pulsIt--;
 				break;
 			}
 			break;
@@ -831,8 +828,6 @@ void SW_on(byte sw) {
 			else { //RPM mode
 				MEM_reg ^= (1 << 2); //toon welk RPM roller/wiel getoond wordt
 			}
-
-
 			break;
 
 		case 1:	//value up
@@ -864,6 +859,15 @@ void SW_on(byte sw) {
 			case 8: //precisie
 				if (preset[p].precisie < 12)preset[p].precisie++;
 				break;
+			case 9:
+				if (preset[p].usb < 2)preset[p].usb++;
+				break;
+			case 10:
+				if (preset[p].Dsc < 250) preset[p].Dsc++;
+				break;
+			case 11:
+				if (preset[p].pulsIt < 24)preset[p].pulsIt++;
+				break;
 			}
 
 			break;
@@ -880,17 +884,22 @@ void tekens(byte teken) {
 void SW_off(byte sw) {
 
 }
+
 void SC_exe() {
 	//stuurt boodschap over USB poort ten behoeve van SpeedCat (Itrain compatibel)
 	//unsigned int tijd;
 	unsigned int pls = 0;
 	float dia; //aantal pulsen uitrekenen
 	//onderstaand kan in 1 berekening
+
 	dia = preset[p].dr1; //diameter roller 1
 	dia = dia / preset[p].Dsc * 10; //roller Dsc = in tienden mm
 	dia = dia / preset[p].puls1;
 
-	//tijd = millis() - oldtime;
+
+	//tijd = millis() - oldtime;  //voor debug
+	
+	
 	//aantal pulsen per rotatie doorgeven
 	//instelbaar voor verschillende rollerbanken te gebruiken.
 
@@ -904,10 +913,12 @@ void SC_exe() {
 	//puls in 4 decimalen 
 	//txt: V3.0  willekeurige tekst, testen of Itrain dit toont
 	//txtvariabel: % einde, Vereist. misschien zijn er meerder parameters hier? of alleen nodig voor de tekst? 
-	Serial.println(txtSC);
+
+	Serial.println(txtSC); //uitvoer naar Itrain/SpeedCat
 
 	//Serial.print(tijd); Serial.print("   Puls: "); Serial.println(countSC);
 	//oldtime = millis();
+	
 	countSC = 0;
 }
 

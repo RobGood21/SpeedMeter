@@ -25,7 +25,7 @@ General purpose registers
 GPIOR0
 bit0 enable INT0 true, disable false
 bit1 Dender
-bit2 true: USB>Itrain, Speed-Cat   False: USB>Simpledyno
+bit2 nc
 bit3 nc
 
 
