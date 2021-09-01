@@ -14,7 +14,7 @@
 
  V2.01
  Versie zichtbaar maken in display
- 
+
  Toepassing van 'KPF Zeller Speed-Cat' als sensor mogelijk maken.
  Itrain met gebruik van 'KPF Zeller Speed-Cat' instelling koppelen (iTrain 5.0 - Handleiding blz.72)
  bugsfixes:
@@ -67,7 +67,8 @@ int SW_time; //counter, timer voor zeer langzame processen (1xper 20ms, 50hz)
 
 
 struct PRESETS {
-
+	byte reg;
+	//bit0=USB output True =Itrain/speedCat false=SimpleDyno
 	byte dr1; //diameter rol 1 in mm
 	byte dr2; //diameter rol2
 	byte dw1;//diameter wiel voertuig op RM1 
@@ -105,6 +106,7 @@ char txtSC[80];
 byte DP_type = 0; //EEPROM #101 welk scherm wordt getoond, wisseld met knop 4
 byte DP_level = 0;
 byte MEM_reg; //EEPROM #100
+byte prglvl=9;
 
 //temps
 int countsign = 0;
@@ -217,10 +219,9 @@ void loop() {
 	//unsigned long time;
 	//time = millis();
 
+	
 
-	if (MEM_reg & (1 << 4)) { //send data to SpeedCat app or Itrain
-
-
+	if (GPIOR0 & (1 << 2)) { //send data to SpeedCat app or Itrain
 
 		if (millis() - SCtime > 999) { //1sec
 
@@ -229,7 +230,8 @@ void loop() {
 		}
 	}
 
-	if (millis() - SCtime < 950) { //slow events niet vlak voor een telling uitvoeren
+
+	//if (millis() - SCtime < 950 | ~GPIOR0 & (1<<2)) { //slow events niet vlak voor een telling voor Itrain uitvoeren
 		if (millis() - slowtime > 20) { //20 
 			slowtime = millis();
 			countstop++;
@@ -238,12 +240,14 @@ void loop() {
 				RPM2 = 0;
 				PORTD &= ~(B11000000 << 0); //leds uit			
 			}
-			if (~MEM_reg & (1 << 4)) SD_exe(); //sends msg to  simpledyno via serial connection
+
+			//if (~GPIOR0 & (1 << 2)) SD_exe(); //sends msg to  simpledyno via serial connection
+
 			SW_exe();
 			//tekens(); //gebruiken om speciaal teken op te zoeken
 			DP_exe(); //dit proces duurt te lang! vertraagd de time based processen te veel 
 		}
-	}
+	//}
 
 }
 
@@ -261,6 +265,9 @@ void factory() {
 }
 
 void MEM_read() {
+	GPIOR0 = 0;
+
+
 
 	//Leest EEPROM na power up
 	MEM_reg = EEPROM.read(10);
@@ -274,19 +281,20 @@ void MEM_read() {
 	///P =current preset moet nu al geladen zijn uit EEPROM
 
 	//6 presets mogelijk
-
+	byte xtr;
 	for (byte i = 0; i < 6; i++) {
-
-		preset[i].dr1 = EEPROM.read(100 + (i * 10));
-		preset[i].dr2 = EEPROM.read(101 + (i * 10));
-		preset[i].dw1 = EEPROM.read(102 + (i * 10));
-		preset[i].dw2 = EEPROM.read(103 + (i * 10));
-		preset[i].puls1 = EEPROM.read(104 + (i * 10));
-		preset[i].puls2 = EEPROM.read(105 + (i * 10));
-		preset[i].schaal = EEPROM.read(106 + (i * 10));
-		preset[i].precisie = EEPROM.read(107 + (i * 10));
-		preset[i].pulsIt = EEPROM.read(108 + (i * 10));
-		preset[i].Dsc = EEPROM.read(109 + (i * 10));//ijken
+		xtr = i * 20;
+		preset[i].dr1 = EEPROM.read(100 + xtr);
+		preset[i].dr2 = EEPROM.read(101 + xtr);
+		preset[i].dw1 = EEPROM.read(102 + xtr);
+		preset[i].dw2 = EEPROM.read(103 + xtr);
+		preset[i].puls1 = EEPROM.read(104 + xtr);
+		preset[i].puls2 = EEPROM.read(105 + xtr);
+		preset[i].schaal = EEPROM.read(106 + xtr);
+		preset[i].precisie = EEPROM.read(107 + xtr);
+		preset[i].pulsIt = EEPROM.read(108 + xtr);
+		preset[i].Dsc = EEPROM.read(109 + xtr);//ijken
+		preset[i].reg = EEPROM.read(110 + xtr);
 
 		if (preset[i].dr1 == 0xFF)preset[i].dr1 = 20;
 		if (preset[i].dr2 == 0xFF)preset[i].dr2 = 20;
@@ -298,31 +306,45 @@ void MEM_read() {
 		if (preset[i].precisie == 0xFF)preset[i].precisie = 6;
 		if (preset[i].pulsIt == 0xFF)preset[i].pulsIt = 4; //waarschijnlijk standaard... 
 		if (preset[i].Dsc == 0xFF)preset[i].Dsc = 63; ////diameter mm/10 roller waar Itrain/speedcat mee rekenen, ijken
+		//reg==default 0xFF
 	}
 
+	//inits
+	if (preset[p].reg & (1 << 0))GPIOR0 |= (1 << 2); //zet flag voor USB output, It=true Sd=false
 
 }
 void MEM_write() {
 	//updates EEPROM, vaak.... dus als rare fouten na enkele jaren denkbaar EEPROM defect van de arduino
-	byte xtr=10*p;
+	byte xtr = 20 * p;
 	EEPROM.update(10, MEM_reg);
 	EEPROM.update(11, DP_type);
 	EEPROM.update(12, p);
 
 	//alleen de current preset p hoeft te worden geupdated.
-	EEPROM.update(100+xtr, preset[p].dr1);
-	EEPROM.update(101+xtr, preset[p].dr2);
-	EEPROM.update(102+xtr, preset[p].dw1);
-	EEPROM.update(103+xtr, preset[p].dw2);
-	EEPROM.update(104+xtr, preset[p].puls1);
-	EEPROM.update(105+xtr, preset[p].puls2);
-	EEPROM.update(106+xtr, preset[p].schaal);
-	EEPROM.update(107+xtr, preset[p].precisie);
-	EEPROM.update(108+xtr, preset[p].pulsIt);
-	EEPROM.update(109+xtr, preset[p].Dsc);
+	EEPROM.update(100 + xtr, preset[p].dr1);
+	EEPROM.update(101 + xtr, preset[p].dr2);
+	EEPROM.update(102 + xtr, preset[p].dw1);
+	EEPROM.update(103 + xtr, preset[p].dw2);
+	EEPROM.update(104 + xtr, preset[p].puls1);
+	EEPROM.update(105 + xtr, preset[p].puls2);
+	EEPROM.update(106 + xtr, preset[p].schaal);
+	EEPROM.update(107 + xtr, preset[p].precisie);
+	EEPROM.update(108 + xtr, preset[p].pulsIt);
+	EEPROM.update(109 + xtr, preset[p].Dsc);
+	EEPROM.update(110 + xtr, preset[p].reg);
 
+	//inits
 	R_dender(); //bereken denderwaardes, van precisie
 
+
+	
+
+	if (preset[p].reg & (1 << 1)) { //USB
+		GPIOR0 |= (1 << 2);
+	}
+	else {
+		GPIOR0 &= ~(1 << 2);
+	}
 }
 
 void R_dender() {
@@ -605,36 +627,56 @@ void scherm2() {
 	//display.print(F(" "));
 	display.print(preset[p].precisie);
 
+
+
+	//level 9 *****USB 
+	display.setCursor(63, 51);
+	if (preset[p].reg & (1 << 0)) {
+		display.print(F("It"));
+		prglvl = 12;
+	}
+	else {
+		display.print(F("Sd"));
+		prglvl = 14;
+	}
+
+	//display.print(preset[p].precisie);
+
 	//onderstreping
+	byte x; byte y; byte w;
 	switch (DP_level) {
 	case 0:
-		display.drawLine(1, 9, 48, 9, WHITE);
+		x = 1; y = 9; w = 48;
 		break;
 	case 1: //øRM1
-		display.drawLine(1, 23, 48, 23, WHITE);
+		x = 1; y = 23; w = 48;
 		break;
 	case 2: //øWiel
-		display.drawLine(61, 23, 115, 23, WHITE);
+		x = 61; y = 23; w = 115;
 		break;
 	case 3: //øRM2
-		display.drawLine(1, 35, 48, 35, WHITE);
+		x = 1; y = 35; w = 48;
 		break;
 	case 4: //øWiel2
-		display.drawLine(61, 35, 115, 35, WHITE);
+		x = 61; y = 35; w = 115;
 		break;
 	case 5://↑RM1
-		display.drawLine(1, 47, 48, 47, WHITE);
+		x = 1; y = 47; w = 48;
 		break;
 	case 6: //↑RM2
-		display.drawLine(61, 47, 115, 47, WHITE);
+		x = 61; y = 47; w = 115;
 		break;
 	case 7: //Schaal 
-		display.drawLine(1, 59, 25, 59, WHITE);
+		x = 1; y = 59; w = 25;
 		break;
 	case 8: //precisie
-		display.drawLine(33, 59, 50, 59, WHITE);
+		x = 33; y = 59; w = 50;
+		break;
+	case 9: //USB
+		x = 61; y = 59; w = 78;
 		break;
 	}
+	display.drawLine(x, y, w, y, 1);
 }
 void tekens() { //opnemen in loop overige display acties uitschakelen
 
@@ -732,7 +774,7 @@ void SW_on(byte sw) {
 		case 1:
 			//next parameter
 			DP_level++;
-			if (DP_level > 8)DP_level = 0;
+			if (DP_level > prglvl)DP_level = 0;
 			break;
 		}
 		break;
@@ -770,6 +812,9 @@ void SW_on(byte sw) {
 				break;
 			case 8:
 				if (preset[p].precisie > 0) preset[p].precisie--;
+				break;
+			case 9: //USB type
+				preset[p].reg ^= (1 << 0); //flip bit 0
 				break;
 			}
 			break;
@@ -851,7 +896,7 @@ void SC_exe() {
 
 	//pls = (countSC * preset[p].pulsIt * 2) *(preset[p].dr1 / preset[p].Dsc) / preset[p].puls1; //1 rotatie 6mm doorsnee wiel (8=aantal pulsen)
 	pls = (countSC * preset[p].pulsIt * 2) * dia; //1 rotatie 6mm doorsnee wiel (8=aantal pulsen)
-	
+
 	sprintf(txtSC, "*%04d;V3.0%s", pls, "%");
 	//sprintf(txtSC, "*%04d;Speedmeter%s", pls, "%");
 
