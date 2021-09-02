@@ -25,7 +25,7 @@ General purpose registers
 GPIOR0
 bit0 enable INT0 true, disable false
 bit1 Dender
-bit2 nc
+bit2 True scherm2 false scherm1 (start)
 bit3 nc
 
 

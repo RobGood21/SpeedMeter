@@ -9,21 +9,21 @@
  V1.01 26 juni 2021
  Eerste versie, verder werken als hardware SpeedMeter klaar is.
  Ervaringen en evaluatie gebruikers met verschillende type sensoren en rollerbanken is nodig.
- Werkt alleen met simpleDyno en gemonteerde display
+ Werkt alleen met symple Dyno
  Display in twee typen op de markt let op de maten gaten 27mm en 28mm uit elkaar (allGoods)
 
  V2.01
  Versie zichtbaar maken in display
-
  Toepassing van 'KPF Zeller Speed-Cat' als sensor mogelijk maken.
  Itrain met gebruik van 'KPF Zeller Speed-Cat' instelling koppelen (iTrain 5.0 - Handleiding blz.72)
+
  bugsfixes:
-0 waardes  onmogelijk maken fixed
-Presets 2~6 werden niet goed in EEPROM opgeslagen. Fixed
+-0 waardes  onmogelijk maken fixed
+-Presets 2~6 werden niet goed in EEPROM opgeslagen. Fixed
+-Bij 'in bedrijf' scherm, scroll van knop 3 en 4 niet. Fixed
+-Debug en ontwikkel code weggehaald
 
 */
-
-
 
 #include <EEPROM.h>
 #include <SPI.h>
@@ -32,39 +32,25 @@ Presets 2~6 werden niet goed in EEPROM opgeslagen. Fixed
 #include <Adafruit_SSD1306.h>
 
 #define Version "V2.01"
-//#define Dsc 7 //doorsnede van de roller waar Itrain en Speed-cat mee rekenen (waarschijnlijk..)
 
-
-//Display
-//Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+//Display constructor
 Adafruit_SSD1306 display(128, 64, &Wire, 4);
-
-
 
 //voor SimpleDyno
 //message string" micros(),temptime1,time1,temptime2.time2,0,0,0,0,0,0"
 //De 6 nullen zijn de 6 optionele Analog reads voor: voltage, stroom, temeratuur1 en temperatuur2. 5 en 6 zijn not in use
-//Message 1000Hz (1x per 1 ms)
+//Message 1000Hz (1x per 1 ms max, in Speedmeter 1xper 20ms)
+
+
+//Variables
 String toSend;
 unsigned long SD_times[4];
 unsigned int SD_reads[6];
-//RPM1 time =sd_times[0]
-//RPM1 interval =sd_times[1]
-//RPM2 time =sd_times[2]
-//RPM2 interval =sd_times[3]
-
-
-//constanten
-#define DPtypes 1 //aantal verschillende DisPlay_type (begint bij 0 0=1 1=2 enz.)
-
-
 unsigned long oldtime1; //voor berekening interval tussen twee pulsen
 unsigned long oldtime2;
 unsigned long slowtime;
 
 int SW_time; //counter, timer voor zeer langzame processen (1xper 20ms, 50hz)
-
-
 
 struct PRESETS {
 	byte usb; //0=geen output 1=Itrain/SpeedCat 2=Simpledyn
@@ -82,6 +68,7 @@ struct PRESETS {
 
 PRESETS preset[6];
 
+//preset 6 is default voor Itrain
 byte p = 0;
 //variabelen
 byte holecount1; byte holecount2;
@@ -100,9 +87,6 @@ unsigned int countstop = 0;
 
 unsigned long SCtime; // tbv SpeedCat/Itrain
 int countSC = 0; //puls counter tbv SpeedCat
-char txtSC[20];
-
-byte DP_type = 0; //EEPROM #101 welk scherm wordt getoond, wisseld met knop 4
 byte DP_level = 0;
 byte MEM_reg; //EEPROM #100
 byte prglvl = 9;
@@ -111,9 +95,6 @@ byte prglvl = 9;
 int countsign = 0;
 unsigned long counttekens; //gebruikt om tekens te kunnen opzoeken, in loop opnemen
 unsigned long oldtime;
-
-
-
 void setup() {
 	Serial.begin(9600);
 	//Voor Display
@@ -159,41 +140,27 @@ void setup() {
 	MEM_read();
 	R_dender();
 }
-
-
-
 ISR(INT0_vect) {
-	//cli();
-	//Deze ook gebruiken voor Speed-Cat
+	cli();
 	countstop = 0;
-	countSC++;
+
 	if (micros() - antidender[0] > dender[0]) {
 		antidender[0] = micros(); //reset timer
-
-		//speedCat counter, puls tellen
-
-
+		countSC++;//Counter voor Itrain/SpeedCat
 		holecount1++;
 		if (holecount1 >= preset[p].puls1) {
 			holecount1 = 0;
-
-			PIND |= (1 << 6);
-
+			PIND |= (1 << 6); //Flip rode led
 			SD_times[0] = micros();
 			SD_times[1] = SD_times[0] - oldtime1; //bereken interval
 			oldtime1 = SD_times[0];
 			calc(false);
 		}
-
 	}
-
-	//sei();
+	sei();
 }
-
 ISR(INT1_vect) {
-
-	//denk dat die struct volatile moet worden anders tussen variabel voor maken INT0 doettu welll
-	//cli();
+	cli();
 	countstop = 0;
 	if (micros() - antidender[1] > dender[1]) {
 		antidender[1] = micros();
@@ -201,22 +168,16 @@ ISR(INT1_vect) {
 
 		if (holecount2 >= preset[p].puls2) {
 			holecount2 = 0;
-			PIND |= (1 << 7); //groene led aan
+			PIND |= (1 << 7); //Flip groene led
 			SD_times[2] = micros();
 			SD_times[3] = SD_times[2] - oldtime2; //bereken interval
 			oldtime2 = SD_times[2];
 			calc(true);
 		}
 	}
-	//sei();
+	sei();
 }
-
-
 void loop() {
-	//unsigned long time;
-	//time = millis();	
-
-
 	if (preset[p].usb == 1) { //send data to SpeedCat app or Itrain
 
 		if (millis() - SCtime > 999) { //1sec
@@ -240,12 +201,11 @@ void loop() {
 			RPM2 = 0;
 			PORTD &= ~(B11000000 << 0); //leds uit			
 		}
-		if (preset[p].usb==2) SD_exe(); //sends msg to  simpledyno via serial connection
+		if (preset[p].usb == 2) SD_exe(); //sends msg to  simpledyno via serial connection
 		SW_exe();
 		DP_exe(); //dit proces duurt te lang! vertraagd de time based processen te veel 
 	}
 }
-
 void factory() {
 	for (int i = 0; i < EEPROM.length(); i++) {
 		EEPROM.update(i, 0xFF);
@@ -258,21 +218,12 @@ void factory() {
 	display.display();
 	delay(1000);
 }
-
 void MEM_read() {
-
 	//Leest EEPROM na power up
 	MEM_reg = EEPROM.read(10);
-	DP_type = EEPROM.read(11);
-	if (DP_type > DPtypes)DP_type = 0;
-	//roller en wieldiameters
-
-
 	p = EEPROM.read(12);
-	if (p == 0xFF)p = 0;
-	///P =current preset moet nu al geladen zijn uit EEPROM
-
-	//6 presets mogelijk
+	if (p == 0xFF)p = 0;///P =current preset 
+	//6 presets mogelijk V2.01
 	byte xtr;
 	for (byte i = 0; i < 6; i++) {
 		xtr = i * 20;
@@ -287,27 +238,41 @@ void MEM_read() {
 		preset[i].pulsIt = EEPROM.read(108 + xtr);
 		preset[i].Dsc = EEPROM.read(109 + xtr);//ijken
 		preset[i].usb = EEPROM.read(110 + xtr);
+		switch (i) {
+		case 5: //default preset for Itrain/speedmeter
+			if (preset[i].dr1 == 0xFF)preset[i].dr1 = 6;
+			if (preset[i].dr2 == 0xFF)preset[i].dr2 = 1;
+			if (preset[i].dw1 == 0xFF)preset[i].dw1 = 1;
+			if (preset[i].dw2 == 0xFF)preset[i].dw2 = 1;
+			if (preset[i].puls1 == 0xFF)preset[i].puls1 = 4;
+			if (preset[i].puls2 == 0xFF)preset[i].puls2 = 1;
+			if (preset[i].schaal == 0xFF)preset[i].schaal = 87;
+			if (preset[i].precisie == 0xFF)preset[i].precisie = 6;
+			if (preset[i].pulsIt == 0xFF)preset[i].pulsIt = 4; //waarschijnlijk standaard... 
+			if (preset[i].Dsc == 0xFF)preset[i].Dsc = 63; ////diameter mm/10 roller waar Itrain/speedcat mee rekenen, ijken
+			if (preset[i].usb == 0xFF)preset[i].usb = 1; //0=geen usb uit 1=Itrain/SpeedCat 2=SimpleDyno
 
-		if (preset[i].dr1 == 0xFF)preset[i].dr1 = 20;
-		if (preset[i].dr2 == 0xFF)preset[i].dr2 = 20;
-		if (preset[i].dw1 == 0xFF)preset[i].dw1 = preset[p].dr1;
-		if (preset[i].dw2 == 0xFF)preset[i].dw2 = preset[p].dr2;
-		if (preset[i].puls1 == 0xFF)preset[i].puls1 = 1;
-		if (preset[i].puls2 == 0xFF)preset[i].puls2 = 1;
-		if (preset[i].schaal == 0xFF)preset[i].schaal = 1;
-		if (preset[i].precisie == 0xFF)preset[i].precisie = 6;
-		if (preset[i].pulsIt == 0xFF)preset[i].pulsIt = 4; //waarschijnlijk standaard... 
-		if (preset[i].Dsc == 0xFF)preset[i].Dsc = 63; ////diameter mm/10 roller waar Itrain/speedcat mee rekenen, ijken
-		if (preset[i].usb == 0xFF)preset[i].usb = 0; //0=geen usb uit 1=Itrain/SpeedCat 2=SimpleDyno
+			break;
+		default:
+			if (preset[i].dr1 == 0xFF)preset[i].dr1 = 20;
+			if (preset[i].dr2 == 0xFF)preset[i].dr2 = 20;
+			if (preset[i].dw1 == 0xFF)preset[i].dw1 = preset[p].dr1;
+			if (preset[i].dw2 == 0xFF)preset[i].dw2 = preset[p].dr2;
+			if (preset[i].puls1 == 0xFF)preset[i].puls1 = 1;
+			if (preset[i].puls2 == 0xFF)preset[i].puls2 = 1;
+			if (preset[i].schaal == 0xFF)preset[i].schaal = 1;
+			if (preset[i].precisie == 0xFF)preset[i].precisie = 6;
+			if (preset[i].pulsIt == 0xFF)preset[i].pulsIt = 4; //waarschijnlijk standaard... 
+			if (preset[i].Dsc == 0xFF)preset[i].Dsc = 63; ////diameter mm/10 roller waar Itrain/speedcat mee rekenen, ijken
+			if (preset[i].usb == 0xFF)preset[i].usb = 0; //0=geen usb uit 1=Itrain/SpeedCat 2=SimpleDyno
+			break;
+		}
 	}
 }
 void MEM_write() {
-	//updates EEPROM, vaak.... dus als rare fouten na enkele jaren denkbaar EEPROM defect van de arduino
 	byte xtr = 20 * p;
 	EEPROM.update(10, MEM_reg);
-	EEPROM.update(11, DP_type);
 	EEPROM.update(12, p);
-
 	//alleen de current preset p hoeft te worden geupdated.
 	EEPROM.update(100 + xtr, preset[p].dr1);
 	EEPROM.update(101 + xtr, preset[p].dr2);
@@ -320,61 +285,36 @@ void MEM_write() {
 	EEPROM.update(108 + xtr, preset[p].pulsIt);
 	EEPROM.update(109 + xtr, preset[p].Dsc);
 	EEPROM.update(110 + xtr, preset[p].usb);
-
 	//inits
 	R_dender(); //bereken denderwaardes, van precisie   
 }
-
 void R_dender() {
-	//berekend de dender waarde in us voor de twee rotatie meters. dender 50~50000 
-	//interupts niet actief tijdens deze waarde
-	//voor hoge snelheid precisie laag cyfer, hoe langzamer cyfer verhogen. filtert dender(bouncing) van sensoren.
-
+	//pauzeert de interupts om denderen van de sensors te ondervangen
 	int temp = 10;
 	for (byte n = 0; n < preset[p].precisie; n++) {
 		temp = temp * 2;
 	}
 	dender[0] = temp / preset[p].puls1;
 	dender[1] = temp / preset[p].puls2;
-
-	//Serial.print("Dender 0 = "); Serial.print(dender[0]); Serial.print("  Dender 1 = "); Serial.println(dender[1]);
-
 }
-
 void DP_exe() { //called from loop()	
 	//Ververst het display op zichtbare snelheid dus 50x per seconde (20ms) called from loop()
-	//Serial.print(F("RPM1= ")); Serial.print(RPM1); Serial.print(F("   RPM2= ")); Serial.println(RPM2);
-
+	//Langzaam proces duurt ongeveer een 30ms
 	display.clearDisplay();
-	switch (DP_type) {
-	case 0:
-		scherm1();
-		break;
-	case 1:
+	if (GPIOR0 & (1 << 2)) { //program scherm
 		scherm2();
-		break;
-	case 2:
-		display.print("display 2");
-		break;
-	case 3:
-		display.print("Toon 3");
-		break;
-	case 4:
-		display.print("program?");
-		break;
+	}
+	else { //false default in bedrij scherm
+		scherm1();
 	}
 	display.display();
 }
-
 void scherm1() {
-
 	String txt_data = "";
 	String txt_type; String txt_rm;
 	byte spatie = 0;
 	unsigned long speed = 0; //Voor RPM
 	unsigned long rest;
-
-
 	//Main venster
 	if (MEM_reg & (1 << 0)) { //Mainvenster RPM 	
 		txt_type += F("RPM");
@@ -383,14 +323,12 @@ void scherm1() {
 			display.drawCircle(105, 40, 5, WHITE);
 			display.fillCircle(95, 50, 8, WHITE);
 			txt_rm = (F("RM"));
-
 		}
 		else { //rpm wiel voertuig
 			display.fillCircle(105, 40, 5, WHITE);
 			display.drawCircle(95, 50, 8, WHITE);
 			txt_rm = (F("AS"));
 		}
-
 		if (MEM_reg & (1 << 1)) { //Mainvenster RM1	
 			speed = RPM1;
 			txt_rm += F("1");
@@ -401,17 +339,12 @@ void scherm1() {
 			if (~MEM_reg & (1 << 2))speed = speed * preset[p].dr2 / preset[p].dw2;
 			txt_rm += F("2");
 		}
-
 	}
-
 	else { //Mainvenster kmh		
-
 		txt_data = "";
 		txt_rm = F("RM");
 		txt_type += F("KMh");
-
 		if (MEM_reg & (1 << 1)) { //RM1
-
 			txt_rm += F("1");
 			//rotatie per minuut x omtrek x 60 minuten = afgelegde afstand in mm
 			speed = RPM1 * preset[p].dr1*3.14 * 60;
@@ -420,13 +353,11 @@ void scherm1() {
 			txt_rm += F("2"); //RM2
 			speed = RPM2 * preset[p].dr2*3.14 * 60;
 		}
-
 		display.drawLine(80, 41, 110, 41, WHITE);
 		display.drawLine(80, 53, 110, 53, WHITE);
 		display.setCursor(85, 44);
 		display.setTextSize(1);
 		display.setTextColor(WHITE);
-
 		display.print(F("1:"));
 		if (MEM_reg & (1 << 3)) { //snelheid tonen 1:1
 			display.print("1");
@@ -437,8 +368,6 @@ void scherm1() {
 			display.setCursor(120, 1);
 			display.write(231);
 		}
-
-
 		speed = speed / 100000;
 		//laatste cyfer berekenen
 		rest = speed;
@@ -448,15 +377,11 @@ void scherm1() {
 		speed = speed / 10;
 		if (rest > 4)speed++;
 	}
-
 	spatie = spaties(speed, 5); //getal, aantal cyfers in het getal
 	for (byte i = 0; i < spatie; i++) {
 		txt_data += " ";
-
 	}
-
 	txt_data += speed;
-
 	//
 	display.setTextColor(WHITE);
 	display.setTextSize(3);
@@ -498,13 +423,6 @@ void scherm1() {
 	display.setCursor(33, 48);
 	display.print(txt_data);
 }
-
-//bool rest() {
-
-
-	//return rest;
-//}
-
 void scherm2() {
 	//programmeer venster	
 	byte spatie;
@@ -605,8 +523,6 @@ void scherm2() {
 	//display.print(F(" "));
 	display.print(preset[p].precisie);
 
-
-
 	//level 9 *****USB 
 	display.setCursor(63, 51);
 	prglvl = 9;
@@ -621,7 +537,6 @@ void scherm2() {
 		display.print(F("Y")); display.print(preset[p].Dsc);
 		display.setCursor(104, 51);
 		display.print(F("P")); display.print(preset[p].pulsIt);
-
 		break;
 	case 2:
 		display.print(F("Sd"));
@@ -669,113 +584,73 @@ void scherm2() {
 	}
 	display.drawLine(x, y, w, y, 1);
 }
-void tekens() { //opnemen in loop overige display acties uitschakelen
-
-	if (millis() - counttekens > 500) {
-		display.clearDisplay();
-		counttekens = millis();
-		display.setTextColor(WHITE);
-		display.setTextSize(3);
-		display.setCursor(1, 5);
-		display.println(countsign);
-		display.write(countsign);
-		display.display();
-		countsign++;
-		if (countsign > 255)countsign = 200;
-	}
-}
-
-
 byte spaties(int nummer, byte digits) {
-
+	/*
+	Berkend aantal spaties in een txt om deze rechts uit te kunnen lijnen
+	*/
 	byte aantal = 0;
 	byte spatie = 0;
-
 	while (nummer > 9) {
 		aantal++;
 		nummer = nummer / 10;
 	}
 	//aantal is nu aantal cyfers
 	spatie = digits - 1 - aantal;
-
 	return spatie;
 }
-
 void SW_exe() { //called from loop() every 20ms
 	byte ss; byte changed;
-	ss = PINB;
-	ss = ss << 4;
-	ss = ss >> 4; //clear bits 4,5,6,7
+	ss = PINB; ss = ss << 4;	ss = ss >> 4; //clear bits 4,5,6,7
 	changed = switchstatus ^ ss;
-
 	if (changed > 0) {
-		SW_clear();
 		for (byte i = 0; i < 4; i++) {
 			if (changed & (1 << i)) {
 				if (ss & (1 << i)) {
-					SW_off(i);
-
+					SW_off(i); //clear scroll counters
 				}
 				else {
 					SW_on(i);
-
 				}
 			}
 		}
-
 	}
-	else { //dus geen verandering, scrollen.
-		if (ss != 15) { //dus switch ingedrukt
-			if (switchcount[0] < 200) switchcount[0]++;
-			if (switchcount[0] > 10) { //na 1 seconde				
-				//PIND |= (1 << 6); //rode led ff als test
-				if (~ss & (1 << 2)) { //sw 3 ingedrukt
-					SW_on(2);
+	else if (GPIOR0 & (1 << 2)) { //dus geen verandering, scrollen. Alleen in program mode
+		//alleen sw 2 en 3 kunnen scrollen	
+		for (byte s = 2; s < 4; s++) {
+			if (~ss & (1 << s)) {
+				if (switchcount[s] < 10) {
+					switchcount[s]++;
 				}
-				else if (~ss & (1 << 3)) { //sw 4 ingedrukt
-					SW_on(3);
+				else {
+					SW_on(s);
 				}
 			}
 		}
 	}
 	switchstatus = ss;
 }
-
-void SW_clear() {
-	//set counters naar 0
-	for (byte i = 0; i < 5; i++) {
-		switchcount[i] = 0;
-	}
+void SW_off(byte sw) {
+	switchcount[sw] = 0;
 }
-
 void SW_on(byte sw) {
-	//Serial.print(F("Switch-on: ")); Serial.println(sw);
 	switch (sw) {
-	case 0:
-		//wisseld scherm
-		DP_type++;
-		if (DP_type > DPtypes)DP_type = 0;
-
+	case 0: //Knop1
+		GPIOR0 ^= (1 << 2);//wisselt het scherm
 		break;
-	case 1:
-		switch (DP_type) {
-		case 0: //wisseld tonen kmh of RPM in hoofd venster
+	case 1: //Knop 2
+		if (~GPIOR0 & (1 << 2)) {
 			MEM_reg ^= (1 << 0);
-			break;
-		case 1:
-			//next parameter
+		}
+		else {
 			DP_level++;
 			if (DP_level > prglvl)DP_level = 0;
-			break;
 		}
 		break;
-	case 2:
-		switch (DP_type) {
-		case 0:
+	case 2: //Knop 3
+		if (~GPIOR0 & (1 << 2)) {
 			MEM_reg ^= (1 << 1);
-			break;
-		case 1://value down
-
+		}
+		else {
 			switch (DP_level) {
 			case 0:
 				if (p > 0) p--;
@@ -814,23 +689,18 @@ void SW_on(byte sw) {
 				if (preset[p].pulsIt > 1)preset[p].pulsIt--;
 				break;
 			}
-			break;
 		}
-
 		break;
-	case 3:
-
-		switch (DP_type) {
-		case 0:
+	case 3: //Knop 4
+		if (~GPIOR0 & (1 << 2)) {
 			if (~MEM_reg & (1 << 0)) { //KMh mode
 				MEM_reg ^= (1 << 3); //snelheid op schaal of 1:1
 			}
 			else { //RPM mode
 				MEM_reg ^= (1 << 2); //toon welk RPM roller/wiel getoond wordt
 			}
-			break;
-
-		case 1:	//value up
+		}
+		else {
 			switch (DP_level) {
 			case 0:
 				if (p < 5)p++;
@@ -869,65 +739,51 @@ void SW_on(byte sw) {
 				if (preset[p].pulsIt < 24)preset[p].pulsIt++;
 				break;
 			}
-
-			break;
 		}
 		break;
 	}
-
-	if (DP_type == 0)MEM_write();
+	if (~GPIOR0 & (1 << 2))MEM_write();
 }
-void tekens(byte teken) {
-
-}
-
-void SW_off(byte sw) {
-
-}
-
 void SC_exe() {
+	char txt[15]; //11 minimaal nodig
 	//stuurt boodschap over USB poort ten behoeve van SpeedCat (Itrain compatibel)
-	//unsigned int tijd;
+	/*
+	Berekening.
+	Itrain/SpeedCat app wil 8 pulsen in 1 rotatie.
+	Afgelegde afstand voor 1 puls is een constante, altijd gebruik van Zeller rolletje ongeveer 6mm diameter
+	Delen van de ingestelde diameter voor RM1 door deze constante omtrek van de Zeller rol.
+	Deze maat, zeller rol,  in tienden van mm, en instelbaar om de beide meetmethoden op elkaar te kunnen ijken.
+	Afstand delen door het aantal pulsen in een rotatie van RM1
+	Afstand vermenigvuldigen met het aantal te leveren pulsen aan Itrain/Speedmeter
+	Deze waarde maal twee omdat Itrain/Speedmeter beide flanken van de puls tellen, Speedmeter
+	teld alleen de positieve flank.
+	*/
 	unsigned int pls = 0;
 	float dia; //aantal pulsen uitrekenen
-	//onderstaand kan in 1 berekening
-
 	dia = preset[p].dr1; //diameter roller 1
 	dia = dia / preset[p].Dsc * 10; //roller Dsc = in tienden mm
 	dia = dia / preset[p].puls1;
-
-
-	//tijd = millis() - oldtime;  //voor debug
-	
-	
-	//aantal pulsen per rotatie doorgeven
-	//instelbaar voor verschillende rollerbanken te gebruiken.
-
-	//pls = (countSC * preset[p].pulsIt * 2) *(preset[p].dr1 / preset[p].Dsc) / preset[p].puls1; //1 rotatie 6mm doorsnee wiel (8=aantal pulsen)
-	pls = (countSC * preset[p].pulsIt * 2) * dia; //1 rotatie 6mm doorsnee wiel (8=aantal pulsen)
-
-	sprintf(txtSC, "*%04d;V3.0%s", pls, "%");
-	//sprintf(txtSC, "*%04d;Speedmeter%s", pls, "%");
-
+	pls = (countSC * preset[p].pulsIt * 2) * dia;
+	sprintf(txt, "*%04d;V3.0%s", pls, "%");
+	//sprintf(txtSC, "*%04d;Speedmeter%s", pls, "%"); //voorbeeld andere txt, niet getest op Itrain
 	//format: * start?  Vereist
-	//puls in 4 decimalen 
-	//txt: V3.0  willekeurige tekst, testen of Itrain dit toont
+	//puls in 4 decimalen als CHAR 
+	//txt: V3.0  willekeurige tekst, testen of Itrain deze txt toont
 	//txtvariabel: % einde, Vereist. misschien zijn er meerder parameters hier? of alleen nodig voor de tekst? 
-
-	Serial.println(txtSC); //uitvoer naar Itrain/SpeedCat
-
-	//Serial.print(tijd); Serial.print("   Puls: "); Serial.println(countSC);
-	//oldtime = millis();
-	
+	Serial.println(txt); //uitvoer naar Itrain/SpeedCat
 	countSC = 0;
 }
-
 void SD_exe() {
 	//berekend en sends message over serial port to SympleDyno
-	//SD_times[2] = SD_times[0];
-	//SD_times[3] = SD_times[1];
+	/*
 
-
+	SimpleDyno verwacht een boodschap die de tijdsduur aangeeft tussen twee pulsen
+	Het verwacht, de tijd in micros
+	De starttijd van de puls in micros, de eindtijd van de puls in micros
+	Verder een rits meetwaardes die niet in project Speedmeter zijn meegenomen.
+	Aan de hand van de tijden kan SimpleDyno rotaties en snelheden uitrekenen.
+	De op SpeedMeter getoonde waardes worden ook op deze manier verkregen.
+	*/
 	toSend = ""; //init
 	toSend += micros();
 	toSend += ",";
@@ -940,11 +796,10 @@ void SD_exe() {
 		if (i < 5)toSend += ",";
 	}
 	Serial.println(toSend);
-	Serial.flush();
+	//Serial.flush(); //pauzeerd programma totdat de send buffer leeg is. Gebruiken hier? Waarom?
 }
-
-void calc(bool rm) {
-	//maakt alle berekeningen, gemiddelde van twee laatste metingen
+void calc(bool rm) { //called from ISR's
+	//maakt berekeningen, gemiddelde van twee laatste metingen
 	int speed;
 	if (rm) { //RM1
 		speed = 60000000 / SD_times[3] + 1;
@@ -957,11 +812,3 @@ void calc(bool rm) {
 		rpm1old = speed;
 	}
 }
-
-void I2C_send(byte command) {
-	Wire.beginTransmission(0x3C);    // begin I2C communication adress0x3C
-	Wire.write(0x80);           // Set OLED Command mode 0x80
-	Wire.write(command);
-	Wire.endTransmission();                       // End I2C communication
-}
-
