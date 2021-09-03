@@ -97,43 +97,31 @@ unsigned long counttekens; //gebruikt om tekens te kunnen opzoeken, in loop opne
 unsigned long oldtime;
 void setup() {
 	Serial.begin(9600);
-	//Voor Display
-
-	// SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
-	if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-		Serial.println(F("SSD1306 allocation failed"));
-		for (;;); // Don't proceed, loop forever
-	}
+	//Display.
+	display.begin(SSD1306_SWITCHCAPVCC, 0x3C); //Ook als display er niet is starten.	   
 	display.clearDisplay();
 	display.display();
-	// display.drawPixel(x, y, color)
-
 	//Poorten en pins definieren
 	DDRD |= (1 << 7); //Pin 7 Groene led, output
 	DDRD |= (1 << 6); //Pin 6 Rode led
 	DDRD |= (1 << 5); //PIN5 INT1 enabled
 	DDRD |= (1 << 4); //PIN4 INT0 enabled
+
 	//pin 8~11 4 xschakelaar input
 	DDRB &= ~(15 << 0);
 	PORTB |= (15 << 0); //pull-up to pins 8~11
 	PORTD &= ~(1 << 5);
 	PORTD &= ~(1 << 4);
 
-	//define interrupt
-		//Interupt on rising edge PIN2, INT0
-		//01 = any change 10=falling edge 11=rising edge
-
+	//setup interrupts, Interupt on rising edge PIN2, INT0, 01 = any change 10=falling edge 11=rising edge
 	EICRA |= (1 << 0); //set bit0 of register ISC00 (rising edge both)
 	EICRA |= (1 << 1); //set bit1 of register ISC01
-
 	EICRA |= (1 << 2); //set bit2 of register ISC10 (rising edge, both)
 	EICRA |= (1 << 3); //set bit3 of register ISC11
-
 	EIMSK |= (1 << 0); //Interupt INT0 enabled
 	EIMSK |= (1 << 1); //Interupt INT1 enabled
 
-//display
-	//factory reset
+	//factory reset, knop1 en knop 4 ingedrukt
 	if (~PINB & (1 << 0) && ~PINB & (1 << 3))factory();
 
 	//initialisaties
@@ -143,7 +131,6 @@ void setup() {
 ISR(INT0_vect) {
 	cli();
 	countstop = 0;
-
 	if (micros() - antidender[0] > dender[0]) {
 		antidender[0] = micros(); //reset timer
 		countSC++;//Counter voor Itrain/SpeedCat
@@ -203,7 +190,7 @@ void loop() {
 		}
 		if (preset[p].usb == 2) SD_exe(); //sends msg to  simpledyno via serial connection
 		SW_exe();
-		DP_exe(); //dit proces duurt te lang! vertraagd de time based processen te veel 
+		DP_exe(); //dit proces duurt lang! vertraagd de time based processen 
 	}
 }
 void factory() {
