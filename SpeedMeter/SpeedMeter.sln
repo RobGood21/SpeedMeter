@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.28307.1433
+# Visual Studio Version 17
+VisualStudioVersion = 17.2.32526.322
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SpeedMeter", "SpeedMeter\SpeedMeter.vcxproj", "{C5F80730-F44F-4478-BDAE-6634EFC2CA88}"
 EndProject
@@ -20,15 +20,9 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Display_Adafruit", "Display
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "EEPROM-2.0", "Libraries\EEPROM\2.0\EEPROM\EEPROM-2.0.vcxitems", "{C847E744-F0E3-43C1-B32E-050011DEA0EA}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SpeedMeter_V3.01", "SpeedMeter_V3.01\SpeedMeter_V3.01.vcxproj", "{65C06BBD-AB37-4CB9-BD15-B1131D1FE5FD}"
+EndProject
 Global
-	GlobalSection(SharedMSBuildProjectFiles) = preSolution
-		Libraries\Ai_Ardulib_SSD1306-master\1.0.2\Ai_Ardulib_SSD1306-master\Ai_Ardulib_SSD1306-master-1.0.2.vcxitems*{32af92ed-4952-4dce-8008-a11d09be4833}*SharedItemsImports = 9
-		Libraries\Wire\1.0\Wire\Wire-1.0.vcxitems*{46652c01-88f0-402a-b520-b888607d01f3}*SharedItemsImports = 9
-		Libraries\Ai_Ardulib_SSD1306-master\1.0.2\Ai_Ardulib_SSD1306-master\Ai_Ardulib_SSD1306-master-1.0.2.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
-		Libraries\EEPROM\2.0\EEPROM\EEPROM-2.0.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
-		Libraries\Wire\1.0\Wire\Wire-1.0.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
-		Libraries\EEPROM\2.0\EEPROM\EEPROM-2.0.vcxitems*{c847e744-f0e3-43c1-b32e-050011dea0ea}*SharedItemsImports = 9
-	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x86 = Debug|x86
 		Release|x86 = Release|x86
@@ -46,11 +40,23 @@ Global
 		{FA8CD994-EDCF-4E76-B681-99B48FB39A31}.Debug|x86.Build.0 = Debug|Win32
 		{FA8CD994-EDCF-4E76-B681-99B48FB39A31}.Release|x86.ActiveCfg = Release|Win32
 		{FA8CD994-EDCF-4E76-B681-99B48FB39A31}.Release|x86.Build.0 = Release|Win32
+		{65C06BBD-AB37-4CB9-BD15-B1131D1FE5FD}.Debug|x86.ActiveCfg = Debug|Win32
+		{65C06BBD-AB37-4CB9-BD15-B1131D1FE5FD}.Debug|x86.Build.0 = Debug|Win32
+		{65C06BBD-AB37-4CB9-BD15-B1131D1FE5FD}.Release|x86.ActiveCfg = Release|Win32
+		{65C06BBD-AB37-4CB9-BD15-B1131D1FE5FD}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {94ABAA63-3AFC-47F3-817D-1FE7F2EBFF00}
+	EndGlobalSection
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		Libraries\Ai_Ardulib_SSD1306-master\1.0.2\Ai_Ardulib_SSD1306-master\Ai_Ardulib_SSD1306-master-1.0.2.vcxitems*{32af92ed-4952-4dce-8008-a11d09be4833}*SharedItemsImports = 9
+		Libraries\Wire\1.0\Wire\Wire-1.0.vcxitems*{46652c01-88f0-402a-b520-b888607d01f3}*SharedItemsImports = 9
+		Libraries\Ai_Ardulib_SSD1306-master\1.0.2\Ai_Ardulib_SSD1306-master\Ai_Ardulib_SSD1306-master-1.0.2.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
+		Libraries\EEPROM\2.0\EEPROM\EEPROM-2.0.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
+		Libraries\Wire\1.0\Wire\Wire-1.0.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
+		Libraries\EEPROM\2.0\EEPROM\EEPROM-2.0.vcxitems*{c847e744-f0e3-43c1-b32e-050011dea0ea}*SharedItemsImports = 9
 	EndGlobalSection
 EndGlobal
