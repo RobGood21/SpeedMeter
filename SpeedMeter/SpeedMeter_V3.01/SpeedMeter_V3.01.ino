@@ -23,7 +23,7 @@
 -Bij 'in bedrijf' scherm, scroll van knop 3 en 4 niet. Fixed
 -Debug en ontwikkel code weggehaald
 
-V3.01 
+V3.01
 Toevoegen afstand snelheids meting
 
 
@@ -36,6 +36,10 @@ Toevoegen afstand snelheids meting
 #include <Adafruit_SSD1306.h>
 
 #define Version "V3.01"
+#define resettime 10000 
+//trein moet binnen deze waarde/1000 in seconden voorbij de eerste sensor zijn
+//dus een auto reset bv. als trein stopt of keert op het traject,
+//reset ook met een knop doen, knipper aangeven welke sensor start melder was
 
 //Display constructor
 Adafruit_SSD1306 display(128, 64, &Wire, 4);
@@ -94,12 +98,23 @@ unsigned long SCtime; // tbv SpeedCat/Itrain
 int countSC = 0; //puls counter tbv SpeedCat
 byte DP_level = 0;
 byte MEM_reg; //EEPROM #100
-byte prglvl = 9;
+byte prglvl = 10;
+
+byte lastsensor = 0;
+unsigned long sensortime = 0;
+byte trajectfase = 0;
+unsigned long trajecttime = 0;
+unsigned long gemetentijd = 0;
+byte countleds = 0;
 
 //temps
-int countsign = 0;
-unsigned long counttekens; //gebruikt om tekens te kunnen opzoeken, in loop opnemen
-unsigned long oldtime;
+//int countsign = 0;
+//unsigned long counttekens; //gebruikt om tekens te kunnen opzoeken, in loop opnemen
+//unsigned long oldtime;
+int symbol = 0;
+
+
+
 void setup() {
 	Serial.begin(9600);
 	//Display.
@@ -109,6 +124,7 @@ void setup() {
 	//Poorten en pins definieren
 	DDRD |= (1 << 7); //Pin 7 Groene led, output
 	DDRD |= (1 << 6); //Pin 6 Rode led
+
 	DDRD |= (1 << 5); //PIN5 INT1 enabled
 	DDRD |= (1 << 4); //PIN4 INT0 enabled
 
@@ -135,38 +151,51 @@ void setup() {
 }
 ISR(INT0_vect) {
 	cli();
-	countstop = 0;
-	if (micros() - antidender[0] > dender[0]) {
-		antidender[0] = micros(); //reset timer
-		countSC++;//Counter voor Itrain/SpeedCat
-		holecount1++;
-		if (holecount1 >= preset[p].puls1) {
-			holecount1 = 0;
-			PIND |= (1 << 6); //Flip rode led
-			SD_times[0] = micros();
-			SD_times[1] = SD_times[0] - oldtime1; //bereken interval
-			oldtime1 = SD_times[0];
-			calc(false);
+	if (preset[p].mode & (1 << 0)) { //test bit 0 true traject mode
+		traject(1); //sensor 1
+	}
+	else { //roller mode
+		countstop = 0;//teller om stilstaan te detecteren
+		if (micros() - antidender[0] > dender[0]) {
+			antidender[0] = micros(); //reset timer
+			countSC++;//Counter voor Itrain/SpeedCat
+			holecount1++;
+			if (holecount1 >= preset[p].puls1) {
+				holecount1 = 0;
+				PIND |= (1 << 6); //Flip rode led
+				SD_times[0] = micros();
+				SD_times[1] = SD_times[0] - oldtime1; //bereken interval
+				oldtime1 = SD_times[0];
+				calc(false);
+			}
 		}
 	}
+
 	sei();
 }
 ISR(INT1_vect) {
 	cli();
-	countstop = 0;
-	if (micros() - antidender[1] > dender[1]) {
-		antidender[1] = micros();
-		holecount2++;
+	if (preset[p].mode & (1 << 0)) { //test bit 0 true traject mode
+		traject(2); //sensor 2
+	}
+	else { //roller mode
 
-		if (holecount2 >= preset[p].puls2) {
-			holecount2 = 0;
-			PIND |= (1 << 7); //Flip groene led
-			SD_times[2] = micros();
-			SD_times[3] = SD_times[2] - oldtime2; //bereken interval
-			oldtime2 = SD_times[2];
-			calc(true);
+		countstop = 0; //teller om stilstaan te detecteren
+		if (micros() - antidender[1] > dender[1]) {
+			antidender[1] = micros();
+			holecount2++;
+
+			if (holecount2 >= preset[p].puls2) {
+				holecount2 = 0;
+				PIND |= (1 << 7); //Flip groene led
+				SD_times[2] = micros();
+				SD_times[3] = SD_times[2] - oldtime2; //bereken interval
+				oldtime2 = SD_times[2];
+				calc(true);
+			}
 		}
 	}
+
 	sei();
 }
 void loop() {
@@ -187,11 +216,16 @@ void loop() {
 
 	if (millis() - slowtime > 20) { //20 
 		slowtime = millis();
+		if (GPIOR0 & (1 << 4)) {
+			trajectleds();
+		}
+		else { //v3.01 deze if else
+			if (countstop > 10) {
+				RPM1 = 0;
+				RPM2 = 0;
+				PORTD &= ~(B11000000 << 0); //leds uit			
+			}
 		countstop++;
-		if (countstop > 10) {
-			RPM1 = 0;
-			RPM2 = 0;
-			PORTD &= ~(B11000000 << 0); //leds uit			
 		}
 
 		if (preset[p].usb == 2) SD_exe(); //sends msg to  simpledyno via serial connection
@@ -247,7 +281,7 @@ void MEM_read() {
 			if (preset[i].Dsc == 0xFF)preset[i].Dsc = 63; ////diameter mm/10 roller waar Itrain/speedcat mee rekenen, ijken
 			if (preset[i].usb == 0xFF)preset[i].usb = 1; //0=geen usb uit 1=Itrain/SpeedCat 2=SimpleDyno
 			if (preset[i].mode == 0xFF)preset[i].mode = 0;
-			break; 
+			break;
 
 		default:
 			if (preset[i].dr1 == 0xFF)preset[i].dr1 = 20;
@@ -295,10 +329,60 @@ void R_dender() {
 	dender[0] = temp / preset[p].puls1;
 	dender[1] = temp / preset[p].puls2;
 }
+void traject(byte s) { //V3.01 s=sensor nummer
+	//Called from ISR's sensors direct, traject meting
+	if (lastsensor == s) { //zelfde sensor
+		if (millis() - sensortime > resettime) {
+			//hier proces reset opnieuw starten traject fase 1
+			//misschien beter een drukknop gebruiken voor reset???
+			trajectfase = 1; trajecttime = millis();
+		}
+	}
+	else { //andere sensor
+		sensortime = millis(); //create one shot on the interrupts
+		switch (trajectfase) {
+		case 0:	//start meting in millisecondes
+			trajectfase = 1;
+			trajecttime = millis();
+			lastsensor = s;
+			GPIOR0 |= (1 << 4); //set bit 4 start led knipperen
+			break;
+		case 1: //meting in proces tweede sensor bereikt.
+			gemetentijd = (millis() - trajecttime) / 1000;
+
+			trajectfase = 0;
+			lastsensor = 0;
+			GPIOR0 &= ~(1 << 4);
+			PORTD &= ~(1 << 6); PORTD &= ~(1 << 7); //leds uit
+			break;
+		}
+	}
+}
+void trajectleds() {
+	//called from loop every 20ms is bit4 of GPIOR0 = true
+	//true led groen (PORTD 7)  false led rood (PORTD 6)
+	byte port = 0;
+	switch (lastsensor) {
+	case 1:
+		port = 6;
+		break;
+	case 2:
+		port = 7;
+		break;
+	}
+	countleds++;
+	if (countleds > 4) {
+		//Serial.print("*");
+		countleds = 0;
+		PIND |= (1 << port);
+	}
+}
+
 void DP_exe() { //called from loop()	
 	//Ververst het display op zichtbare snelheid dus 50x per seconde (20ms) called from loop()
 	//Langzaam proces duurt ongeveer een 30ms
 	display.clearDisplay();
+
 	if (GPIOR0 & (1 << 2)) { //program scherm
 		scherm2();
 	}
@@ -442,10 +526,26 @@ void scherm2() {
 	display.setCursor(95, 1);
 	display.print(Version);
 
+	//level 1 mode selectie roller of rails 
+	display.setCursor(62, 1);
+
+	//displays de ascii codes in het display
+	//display.write(symbol);
+	//display.setCursor(70, 1);
+	//display.print(symbol);
 
 
+	if (preset[p].mode == 0) { //rollers
+		display.write(231);
 
-	//level1********************Diameter roller 1
+	}
+	else { //rails 
+		display.write(174); display.write(175);
+
+	}
+
+
+	//level2********************Diameter roller 1
 	display.setCursor(1, 15);
 	display.write(236);
 	display.print(F("RM1 "));
@@ -457,7 +557,7 @@ void scherm2() {
 	}
 	txt_data += preset[p].dr1;
 	display.print(txt_data);
-	//Level 2 *******************Diameter wiel op RM1 
+	//Level 3 *******************Diameter wiel op RM1 
 	display.setCursor(63, 15);
 	display.write(236);
 	display.print(F("Wiel "));
@@ -469,7 +569,7 @@ void scherm2() {
 	}
 	txt_data += preset[p].dw1;
 	display.print(txt_data);
-	//level3 ********************Diameter roller 2
+	//level4 ********************Diameter roller 2
 	display.setCursor(1, 27);
 	display.write(236);
 	display.print(F("RM2 "));
@@ -481,7 +581,7 @@ void scherm2() {
 	}
 	txt_data += preset[p].dr2;
 	display.print(txt_data);
-	//level4 *******************Diameter wiel op RM2 
+	//level5 *******************Diameter wiel op RM2 
 	display.setCursor(63, 27);
 	display.write(236);
 	display.print(F("Wiel "));
@@ -493,7 +593,7 @@ void scherm2() {
 	}
 	txt_data += preset[p].dw2;
 	display.print(txt_data);
-	//level 5 ************************Aantal pulsen per rotatie RM1
+	//level 6 ************************Aantal pulsen per rotatie RM1
 	display.setCursor(1, 39);
 	display.write(24);
 	display.print(F("RM1 "));
@@ -506,7 +606,7 @@ void scherm2() {
 	txt_data += preset[p].puls1;
 	display.print(txt_data);
 
-	//level6 *******************Aantal pulsen per rotatie RM2
+	//level 7 *******************Aantal pulsen per rotatie RM2
 	display.setCursor(63, 39);
 	display.write(24);
 	display.print(F("RM2  "));
@@ -518,28 +618,28 @@ void scherm2() {
 	}
 	txt_data += preset[p].puls2;
 	display.print(txt_data);
-	//Level7 *********************Schaal 1:(data)
+	//Level 8 *********************Schaal 1:(data)
 	display.setCursor(1, 51);
 	//display.write(231); //symbool
 	display.print(F("1:"));
 	display.print(preset[p].schaal);
-	//Level8 *******************Precisie
+	//Level 9 *******************Precisie
 
 	display.setCursor(35, 51);
 	display.write(245);
 	//display.print(F(" "));
 	display.print(preset[p].precisie);
 
-	//level 9 *****USB 
+	//level 10 *****USB 
 	display.setCursor(63, 51);
-	prglvl = 9;
+	prglvl = 10;
 	switch (preset[p].usb) {
 	case 0:
 		display.print(F("-"));
 		break;
 	case 1:
 		display.print(F("It"));
-		prglvl = 11;
+		prglvl = 12;
 		display.setCursor(80, 51);
 		display.print(F("Y")); display.print(preset[p].Dsc);
 		display.setCursor(104, 51);
@@ -551,48 +651,59 @@ void scherm2() {
 	}
 	//cursor, streep
 	byte x; byte y; byte w;
+	//x-begin vanaf linker kant, y=begin vanaf boven w=eind vanaf linkerkant
 	switch (DP_level) {
 	case 0:
 		x = 1; y = 9; w = 48;
 		break;
-	case 1: //øRM1
+	case 1: //mode
+		x = 61; y = 9; w = 71;
+		break;
+	case 2: //øRM1
 		x = 1; y = 23; w = 48;
 		break;
-	case 2: //øWiel
+	case 3: //øWiel
 		x = 61; y = 23; w = 115;
 		break;
-	case 3: //øRM2
+	case 4: //øRM2
 		x = 1; y = 35; w = 48;
 		break;
-	case 4: //øWiel2
+	case 5: //øWiel2
 		x = 61; y = 35; w = 115;
 		break;
-	case 5://↑RM1
+	case 6://↑RM1
 		x = 1; y = 47; w = 48;
 		break;
-	case 6: //↑RM2
+	case 7: //↑RM2
 		x = 61; y = 47; w = 115;
 		break;
-	case 7: //Schaal 
+	case 8: //Schaal 
 		x = 1; y = 59; w = 25;
 		break;
-	case 8: //precisie
+	case 9: //precisie
 		x = 33; y = 59; w = 50;
 		break;
-	case 9: //USB
+	case 10: //USB
 		x = 61; y = 59; w = 75;
 		break;
-	case 10:
+	case 11:
 		x = 79; y = 59; w = 97;
 		break;
-	case 11:
+	case 12:
 		x = 103; y = 59; w = 116;
 		break;
 	}
 	display.drawLine(x, y, w, y, 1);
 }
-void scherm3() {//sensor naar sensor <->
+void scherm3() {// in bedrijf sensor naar sensor <->
+	display.setTextColor(WHITE); //dit wordt onnodig drie keer gedaan V3.01 aanpassen
+	display.setTextSize(1);
 
+
+	display.setCursor(5, 5);
+	display.print("scherm 3");
+	display.setCursor(20, 20);
+	display.print(gemetentijd);
 }
 byte spaties(int nummer, byte digits) {
 	/*
@@ -666,37 +777,41 @@ void SW_on(byte sw) {
 			case 0:
 				if (p > 0) p--;
 				break;
-			case 1: //rm1 roller
+			case 1: //mode
+				preset[p].mode ^= (1 << 0); //flip alleen bit 0
+				//symbol++; //show volgende symbool
+				break;
+			case 2: //rm1 roller
 				if (preset[p].dr1 > 1) preset[p].dr1--;
 				break;
-			case 2://rm1 Wiel
+			case 3://rm1 Wiel
 				if (preset[p].dw1 > 1) preset[p].dw1--;
 				break;
-			case 3://rm2 roller
+			case 4://rm2 roller
 				if (preset[p].dr2 > 1) preset[p].dr2--;
 				break;
-			case 4://rm2 wiel
+			case 5://rm2 wiel
 				if (preset[p].dw2 > 1) preset[p].dw2--;
 				break;
-			case 5://rm1 pulsen per rotatie
+			case 6://rm1 pulsen per rotatie
 				if (preset[p].puls1 > 1) preset[p].puls1--;
 				break;
-			case 6://rm2 pulsen per rotatie
+			case 7://rm2 pulsen per rotatie
 				if (preset[p].puls2 > 1) preset[p].puls2--;
 				break;
-			case 7:// schaal 1: value
+			case 8:// schaal 1: value
 				if (preset[p].schaal > 1) preset[p].schaal--;
 				break;
-			case 8:
+			case 9:
 				if (preset[p].precisie > 1) preset[p].precisie--;
 				break;
-			case 9: //USB type
+			case 10: //USB type
 				if (preset[p].usb > 0) preset[p].usb--;
 				break;
-			case 10: //ijken, doorsnede rollerwiel zoals Itrain/Speedcat dit verwerkt
+			case 11: //ijken, doorsnede rollerwiel zoals Itrain/Speedcat dit verwerkt
 				if (preset[p].Dsc > 1)preset[p].Dsc--;
 				break;
-			case 11:
+			case 12:
 				if (preset[p].pulsIt > 1)preset[p].pulsIt--;
 				break;
 			}
@@ -716,37 +831,41 @@ void SW_on(byte sw) {
 			case 0:
 				if (p < 5)p++;
 				break;
-			case 1: //rm1 roller
+			case 1: //mode
+				//symbol--; //show voorgaand symbool
+				preset[p].mode ^= (1 << 0); //flip bit 0 0-1 
+				break;
+			case 2: //rm1 roller
 				if (preset[p].dr1 < 250) preset[p].dr1++;
 				break;
-			case 2://rm1 Wiel
+			case 3://rm1 Wiel
 				if (preset[p].dw1 < 250) preset[p].dw1++;
 				break;
-			case 3://rm2 roller
+			case 4://rm2 roller
 				if (preset[p].dr2 < 250) preset[p].dr2++;
 				break;
-			case 4://rm2 wiel
+			case 5://rm2 wiel
 				if (preset[p].dw2 < 250) preset[p].dw2++;
 				break;
-			case 5://rm1 pulsen per rotatie
+			case 6://rm1 pulsen per rotatie
 				if (preset[p].puls1 < 250) preset[p].puls1++;
 				break;
-			case 6://rm2 pulsen per rotatie
+			case 7://rm2 pulsen per rotatie
 				if (preset[p].puls2 < 250) preset[p].puls2++;
 				break;
-			case 7:// schaal 1: value
+			case 8:// schaal 1: value
 				if (preset[p].schaal < 250) preset[p].schaal++;
 				break;
-			case 8: //precisie
+			case 9: //precisie
 				if (preset[p].precisie < 12)preset[p].precisie++;
 				break;
-			case 9:
+			case 10:
 				if (preset[p].usb < 2)preset[p].usb++;
 				break;
-			case 10:
+			case 11:
 				if (preset[p].Dsc < 250) preset[p].Dsc++;
 				break;
-			case 11:
+			case 12:
 				if (preset[p].pulsIt < 24)preset[p].pulsIt++;
 				break;
 			}
