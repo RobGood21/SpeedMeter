@@ -36,10 +36,11 @@ Toevoegen afstand snelheids meting
 #include <Adafruit_SSD1306.h>
 
 #define Version "V3.01"
-#define resettime 10000 
-//trein moet binnen deze waarde/1000 in seconden voorbij de eerste sensor zijn
-//dus een auto reset bv. als trein stopt of keert op het traject,
-//reset ook met een knop doen, knipper aangeven welke sensor start melder was
+#define resettime 500 
+//na 1 interrupt worden alle interrupts geblocked gedurende de resettime, belangrijk dus dat het traject minstens de 
+//reset time moet duren. en dat de hele trein gepasseerd moet zijn plus de resettijd voordat de andere sensor
+//kan worden geactiveerd
+
 
 //Display constructor
 Adafruit_SSD1306 display(128, 64, &Wire, 4);
@@ -62,6 +63,7 @@ int SW_time; //counter, timer voor zeer langzame processen (1xper 20ms, 50hz)
 
 struct PRESETS {
 	byte mode; //0=rotatiemeting 1=point to point meting
+	byte traject; //lengte van het traject in cm (max dus 2M55?)
 	byte usb; //0=geen output 1=Itrain/SpeedCat 2=Simpledyn
 	byte dr1; //diameter rol 1 in mm
 	byte dr2; //diameter rol2
@@ -216,8 +218,15 @@ void loop() {
 
 	if (millis() - slowtime > 20) { //20 
 		slowtime = millis();
-		if (GPIOR0 & (1 << 4)) {
-			trajectleds();
+
+		if (preset[p].mode & (1 << 0)) {
+
+			if (millis() - sensortime > resettime) {
+				GPIOR0 &= ~(1 << 5); //reset flag one shot interrupts
+				PORTD &= ~(1 << 6); //kill red led
+				if (GPIOR0 & (1 << 6)) trajectend();
+			}
+			if (GPIOR0 & (1 << 4))trajectleds();
 		}
 		else { //v3.01 deze if else
 			if (countstop > 10) {
@@ -225,7 +234,7 @@ void loop() {
 				RPM2 = 0;
 				PORTD &= ~(B11000000 << 0); //leds uit			
 			}
-		countstop++;
+			countstop++;
 		}
 
 		if (preset[p].usb == 2) SD_exe(); //sends msg to  simpledyno via serial connection
@@ -266,6 +275,7 @@ void MEM_read() {
 		preset[i].Dsc = EEPROM.read(109 + xtr);//ijken
 		preset[i].usb = EEPROM.read(110 + xtr);
 		preset[i].mode = EEPROM.read(111 + xtr); //mode 0=rotatie 1=<->
+		preset[i].traject = EEPROM.read(112 + xtr); //lengte van het traject
 
 		switch (i) {
 		case 5: //default preset for Itrain/speedmeter
@@ -281,6 +291,7 @@ void MEM_read() {
 			if (preset[i].Dsc == 0xFF)preset[i].Dsc = 63; ////diameter mm/10 roller waar Itrain/speedcat mee rekenen, ijken
 			if (preset[i].usb == 0xFF)preset[i].usb = 1; //0=geen usb uit 1=Itrain/SpeedCat 2=SimpleDyno
 			if (preset[i].mode == 0xFF)preset[i].mode = 0;
+			if (preset[i].traject == 0xFF) preset[i].traject = 100;
 			break;
 
 		default:
@@ -290,12 +301,13 @@ void MEM_read() {
 			if (preset[i].dw2 == 0xFF)preset[i].dw2 = preset[p].dr2;
 			if (preset[i].puls1 == 0xFF)preset[i].puls1 = 1;
 			if (preset[i].puls2 == 0xFF)preset[i].puls2 = 1;
-			if (preset[i].schaal == 0xFF)preset[i].schaal = 1;
+			if (preset[i].schaal == 0xFF)preset[i].schaal = 87;
 			if (preset[i].precisie == 0xFF)preset[i].precisie = 6;
 			if (preset[i].pulsIt == 0xFF)preset[i].pulsIt = 4; //waarschijnlijk standaard... 
 			if (preset[i].Dsc == 0xFF)preset[i].Dsc = 63; ////diameter mm/10 roller waar Itrain/speedcat mee rekenen, ijken
 			if (preset[i].usb == 0xFF)preset[i].usb = 0; //0=geen usb uit 1=Itrain/SpeedCat 2=SimpleDyno
 			if (preset[i].mode == 0xFF)preset[i].mode = 0; //rotatie of <-> V3.01
+			if (preset[i].traject == 0xFF) preset[i].traject = 100;
 			break;
 		}
 	}
@@ -317,6 +329,8 @@ void MEM_write() {
 	EEPROM.update(109 + xtr, preset[p].Dsc);
 	EEPROM.update(110 + xtr, preset[p].usb);
 	EEPROM.update(111 + xtr, preset[p].mode); //v3.01
+	EEPROM.update(112 + xtr, preset[p].traject); //v3.01
+	
 	//inits
 	R_dender(); //bereken denderwaardes, van precisie   
 }
@@ -331,50 +345,56 @@ void R_dender() {
 }
 void traject(byte s) { //V3.01 s=sensor nummer
 	//Called from ISR's sensors direct, traject meting
-	if (lastsensor == s) { //zelfde sensor
-		if (millis() - sensortime > resettime) {
-			//hier proces reset opnieuw starten traject fase 1
-			//misschien beter een drukknop gebruiken voor reset???
-			trajectfase = 1; trajecttime = millis();
-		}
-	}
-	else { //andere sensor
-		sensortime = millis(); //create one shot on the interrupts
-		switch (trajectfase) {
-		case 0:	//start meting in millisecondes
-			trajectfase = 1;
-			trajecttime = millis();
-			lastsensor = s;
-			GPIOR0 |= (1 << 4); //set bit 4 start led knipperen
-			break;
-		case 1: //meting in proces tweede sensor bereikt.
-			gemetentijd = (millis() - trajecttime) / 1000;
+	if (~GPIOR0 & (1 << 5)) { //alleen als register false is, one shot
 
-			trajectfase = 0;
-			lastsensor = 0;
-			GPIOR0 &= ~(1 << 4);
-			PORTD &= ~(1 << 6); PORTD &= ~(1 << 7); //leds uit
-			break;
+		GPIOR0 |= (1 << 5); //set register flag for one shot
+
+		if (lastsensor == s) { //zelfde sensor
+
+			//if (millis() - sensortime > resettime) {
+				//hier proces reset opnieuw starten traject fase 1
+				//misschien beter een drukknop gebruiken voor reset???
+				//trajectfase = 1; trajecttime = millis();
+			//}
+		}
+		else { //andere sensor
+			//sensortime = millis(); //create one shot on the interrupts
+			PORTD |= (1 << 6); //set red led
+			switch (trajectfase) {
+			case 0:	//start meting in millisecondes
+				trajectfase = 1;
+				trajecttime = millis();
+				lastsensor = s;
+				GPIOR0 |= (1 << 4); //set bit 4 start led knipperen
+
+				break;
+
+			case 1: //meting in proces tweede sensor bereikt.
+				GPIOR0 |= (1 << 6); //set flag end of cyclus
+				gemetentijd = (millis() - trajecttime);
+				GPIOR0 &= ~(1 << 4); //reset flag knipperend groen	
+				PORTD &= ~(1 << 7); //leds uit
+				break;
+			}
 		}
 	}
+	sensortime = millis();
 }
+
+void trajectend() {
+	trajectfase = 0;
+	lastsensor = 0;
+	GPIOR0 &= ~(1 << 6); //reset flag trajectend
+	PORTD &= ~(1 << 6);
+}
+
 void trajectleds() {
-	//called from loop every 20ms is bit4 of GPIOR0 = true
-	//true led groen (PORTD 7)  false led rood (PORTD 6)
-	byte port = 0;
-	switch (lastsensor) {
-	case 1:
-		port = 6;
-		break;
-	case 2:
-		port = 7;
-		break;
-	}
+
 	countleds++;
 	if (countleds > 4) {
 		//Serial.print("*");
 		countleds = 0;
-		PIND |= (1 << port);
+		PIND |= (1 << 7);
 	}
 }
 
@@ -516,6 +536,7 @@ void scherm2() {
 	//programmeer venster	
 	byte spatie;
 	String txt_data;
+
 	display.setTextColor(WHITE);
 	display.setTextSize(1);
 
@@ -526,7 +547,7 @@ void scherm2() {
 	display.setCursor(95, 1);
 	display.print(Version);
 
-	//level 1 mode selectie roller of rails 
+	//level 1 mode selectie roller of traject
 	display.setCursor(62, 1);
 
 	//displays de ascii codes in het display
@@ -544,80 +565,99 @@ void scherm2() {
 
 	}
 
+	if (preset[p].mode & (1 << 0)) { //traject mode
+		//**** trajectlengte
+		display.setCursor(1, 15);
+		display.print(F("Traject: "));
+		display.setCursor(61, 15);
+		display.print(preset[p].traject); display.print("cm");
+		
 
-	//level2********************Diameter roller 1
-	display.setCursor(1, 15);
-	display.write(236);
-	display.print(F("RM1 "));
-
-	txt_data = "";
-	spatie = spaties(preset[p].dr1, 3); //getal, aantal cyfers in het getal
-	for (byte i = 0; i < spatie; i++) {
-		txt_data += " ";
 	}
-	txt_data += preset[p].dr1;
-	display.print(txt_data);
-	//Level 3 *******************Diameter wiel op RM1 
-	display.setCursor(63, 15);
-	display.write(236);
-	display.print(F("Wiel "));
+	else { //roller mode
 
-	txt_data = "";
-	spatie = spaties(preset[p].dw1, 3); //getal, aantal cyfers in het getal
-	for (byte i = 0; i < spatie; i++) {
-		txt_data += " ";
+
+		//Alleen in mode 0*****************************************************************************MODE 0
+
+		//level2********************Diameter roller 1
+		display.setCursor(1, 15);
+		display.write(236);
+		display.print(F("RM1 "));
+
+		txt_data = "";
+		spatie = spaties(preset[p].dr1, 3); //getal, aantal cyfers in het getal
+		for (byte i = 0; i < spatie; i++) {
+			txt_data += " ";
+		}
+		txt_data += preset[p].dr1;
+		display.print(txt_data);
+
+		//Level 3 *******************Diameter wiel op RM1 
+		display.setCursor(63, 15);
+		display.write(236);
+		display.print(F("Wiel "));
+
+		txt_data = "";
+		spatie = spaties(preset[p].dw1, 3); //getal, aantal cyfers in het getal
+		for (byte i = 0; i < spatie; i++) {
+			txt_data += " ";
+		}
+		txt_data += preset[p].dw1;
+		display.print(txt_data);
+		//level4 ********************Diameter roller 2
+		display.setCursor(1, 27);
+		display.write(236);
+		display.print(F("RM2 "));
+
+		txt_data = "";
+		spatie = spaties(preset[p].dr2, 3); //getal, aantal cyfers in het getal
+		for (byte i = 0; i < spatie; i++) {
+			txt_data += " ";
+		}
+		txt_data += preset[p].dr2;
+		display.print(txt_data);
+		//level5 *******************Diameter wiel op RM2 
+		display.setCursor(63, 27);
+		display.write(236);
+		display.print(F("Wiel "));
+
+		txt_data = "";
+		spatie = spaties(preset[p].dw2, 3); //getal, aantal cyfers in het getal
+		for (byte i = 0; i < spatie; i++) {
+			txt_data += " ";
+		}
+		txt_data += preset[p].dw2;
+		display.print(txt_data);
+		//level 6 ************************Aantal pulsen per rotatie RM1
+		display.setCursor(1, 39);
+		display.write(24);
+		display.print(F("RM1 "));
+
+		txt_data = "";
+		spatie = spaties(preset[p].puls1, 3); //getal, aantal cyfers in het getal
+		for (byte i = 0; i < spatie; i++) {
+			txt_data += " ";
+		}
+		txt_data += preset[p].puls1;
+		display.print(txt_data);
+
+		//level 7 *******************Aantal pulsen per rotatie RM2
+		display.setCursor(63, 39);
+		display.write(24);
+		display.print(F("RM2  "));
+
+		txt_data = "";
+		spatie = spaties(preset[p].puls2, 3); //getal, aantal cyfers in het getal
+		for (byte i = 0; i < spatie; i++) {
+			txt_data += " ";
+		}
+		txt_data += preset[p].puls2;
+		display.print(txt_data);
+
+		//********MODE 0 alleen einde***************************************************
+
 	}
-	txt_data += preset[p].dw1;
-	display.print(txt_data);
-	//level4 ********************Diameter roller 2
-	display.setCursor(1, 27);
-	display.write(236);
-	display.print(F("RM2 "));
 
-	txt_data = "";
-	spatie = spaties(preset[p].dr2, 3); //getal, aantal cyfers in het getal
-	for (byte i = 0; i < spatie; i++) {
-		txt_data += " ";
-	}
-	txt_data += preset[p].dr2;
-	display.print(txt_data);
-	//level5 *******************Diameter wiel op RM2 
-	display.setCursor(63, 27);
-	display.write(236);
-	display.print(F("Wiel "));
-
-	txt_data = "";
-	spatie = spaties(preset[p].dw2, 3); //getal, aantal cyfers in het getal
-	for (byte i = 0; i < spatie; i++) {
-		txt_data += " ";
-	}
-	txt_data += preset[p].dw2;
-	display.print(txt_data);
-	//level 6 ************************Aantal pulsen per rotatie RM1
-	display.setCursor(1, 39);
-	display.write(24);
-	display.print(F("RM1 "));
-
-	txt_data = "";
-	spatie = spaties(preset[p].puls1, 3); //getal, aantal cyfers in het getal
-	for (byte i = 0; i < spatie; i++) {
-		txt_data += " ";
-	}
-	txt_data += preset[p].puls1;
-	display.print(txt_data);
-
-	//level 7 *******************Aantal pulsen per rotatie RM2
-	display.setCursor(63, 39);
-	display.write(24);
-	display.print(F("RM2  "));
-
-	txt_data = "";
-	spatie = spaties(preset[p].puls2, 3); //getal, aantal cyfers in het getal
-	for (byte i = 0; i < spatie; i++) {
-		txt_data += " ";
-	}
-	txt_data += preset[p].puls2;
-	display.print(txt_data);
 	//Level 8 *********************Schaal 1:(data)
 	display.setCursor(1, 51);
 	//display.write(231); //symbool
@@ -692,6 +732,9 @@ void scherm2() {
 	case 12:
 		x = 103; y = 59; w = 116;
 		break;
+	case 20:
+		x = 61; y = 23; w = 90;
+		break;
 	}
 	display.drawLine(x, y, w, y, 1);
 }
@@ -762,9 +805,26 @@ void SW_on(byte sw) {
 		if (~GPIOR0 & (1 << 2)) { //in bedrijf
 			MEM_reg ^= (1 << 0);
 		}
-		else { //program scherm
+		else { //program scherm V3.01 twee soorten
 			DP_level++;
-			if (DP_level > prglvl)DP_level = 0;
+			switch (preset[p].mode) {
+			case 0:				
+				if (DP_level > prglvl)DP_level = 0;
+				break;
+			case 1:
+				//level gaat nu op en neer dus ff handmatig telkens aanpassen
+				switch (DP_level) {
+				case 2:
+					DP_level = 20;//instellen trajectlengte 
+					break;
+				case 21:
+					DP_level = 8; //schaal instellen
+					break;
+				case 9: 
+					DP_level = 0; //instellen preset nummer
+					break;
+				}
+			}
 		}
 		break;
 
@@ -814,6 +874,7 @@ void SW_on(byte sw) {
 			case 12:
 				if (preset[p].pulsIt > 1)preset[p].pulsIt--;
 				break;
+
 			}
 		}
 		break;

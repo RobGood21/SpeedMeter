@@ -27,7 +27,8 @@ bit1 Dender
 bit2 True scherm2 false scherm1 (start, in bedrijf)
 bit3 
 bit4 true led laten knipperen in traject mode, 0 = led knipperen uit
-bit5  nc free  //
+bit5  holds interrupts in trajectmode
+bit6 true end traject
 
 EEPROM
 MEM_reg=10
