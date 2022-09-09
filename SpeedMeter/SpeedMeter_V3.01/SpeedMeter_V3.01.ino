@@ -108,14 +108,13 @@ byte trajectfase = 0;
 unsigned long trajecttime = 0;
 unsigned long gemetentijd = 0;
 byte countleds = 0;
+int laatstesnelheid = 0;
 
 //temps
 //int countsign = 0;
 //unsigned long counttekens; //gebruikt om tekens te kunnen opzoeken, in loop opnemen
 //unsigned long oldtime;
 int symbol = 0;
-
-
 
 void setup() {
 	Serial.begin(9600);
@@ -330,7 +329,7 @@ void MEM_write() {
 	EEPROM.update(110 + xtr, preset[p].usb);
 	EEPROM.update(111 + xtr, preset[p].mode); //v3.01
 	EEPROM.update(112 + xtr, preset[p].traject); //v3.01
-	
+
 	//inits
 	R_dender(); //bereken denderwaardes, van precisie   
 }
@@ -571,7 +570,7 @@ void scherm2() {
 		display.print(F("Traject: "));
 		display.setCursor(61, 15);
 		display.print(preset[p].traject); display.print("cm");
-		
+
 
 	}
 	else { //roller mode
@@ -654,6 +653,31 @@ void scherm2() {
 		txt_data += preset[p].puls2;
 		display.print(txt_data);
 
+		//verplaatst V3.01
+		display.setCursor(35, 51);
+		display.write(245);
+		//display.print(F(" "));
+		display.print(preset[p].precisie);
+
+		//level 10 *****USB 
+		display.setCursor(63, 51);
+		prglvl = 10;
+		switch (preset[p].usb) {
+		case 0:
+			display.print(F("-"));
+			break;
+		case 1:
+			display.print(F("It"));
+			prglvl = 12;
+			display.setCursor(80, 51);
+			display.print(F("Y")); display.print(preset[p].Dsc);
+			display.setCursor(104, 51);
+			display.print(F("P")); display.print(preset[p].pulsIt);
+			break;
+		case 2:
+			display.print(F("Sd"));
+			break;
+		}
 		//********MODE 0 alleen einde***************************************************
 
 	}
@@ -665,30 +689,14 @@ void scherm2() {
 	display.print(preset[p].schaal);
 	//Level 9 *******************Precisie
 
-	display.setCursor(35, 51);
-	display.write(245);
-	//display.print(F(" "));
-	display.print(preset[p].precisie);
 
-	//level 10 *****USB 
-	display.setCursor(63, 51);
-	prglvl = 10;
-	switch (preset[p].usb) {
-	case 0:
-		display.print(F("-"));
-		break;
-	case 1:
-		display.print(F("It"));
-		prglvl = 12;
-		display.setCursor(80, 51);
-		display.print(F("Y")); display.print(preset[p].Dsc);
-		display.setCursor(104, 51);
-		display.print(F("P")); display.print(preset[p].pulsIt);
-		break;
-	case 2:
-		display.print(F("Sd"));
-		break;
-	}
+
+
+
+
+
+
+
 	//cursor, streep
 	byte x; byte y; byte w;
 	//x-begin vanaf linker kant, y=begin vanaf boven w=eind vanaf linkerkant
@@ -739,14 +747,29 @@ void scherm2() {
 	display.drawLine(x, y, w, y, 1);
 }
 void scherm3() {// in bedrijf sensor naar sensor <->
+	unsigned long speed = 0;
+	unsigned int temp = 0;
+	display.drawLine(1, 55, 128, 55, 1);
 	display.setTextColor(WHITE); //dit wordt onnodig drie keer gedaan V3.01 aanpassen
 	display.setTextSize(1);
+	display.setCursor(5, 57);
+	display.write(174); display.write(175); display.print(preset[p].traject); display.print("cm");
+	display.setCursor(60, 57);
+	display.print(laatstesnelheid);
+
+	//snelheid berekenen traject in cm >KM duur in ms > uur = traject/gemeten*36 
+
+	speed = preset[p].traject * 1000000; //factor om delen door nul te voorkomen
+
+	speed = speed / gemetentijd;
+
+	display.setCursor(5, 5); display.print(speed);
+	display.setCursor(5, 20); display.print(gemetentijd);
 
 
-	display.setCursor(5, 5);
-	display.print("scherm 3");
-	display.setCursor(20, 20);
-	display.print(gemetentijd);
+
+	//display.setCursor(20, 20);
+	//display.print(gemetentijd);
 }
 byte spaties(int nummer, byte digits) {
 	/*
@@ -808,7 +831,7 @@ void SW_on(byte sw) {
 		else { //program scherm V3.01 twee soorten
 			DP_level++;
 			switch (preset[p].mode) {
-			case 0:				
+			case 0:
 				if (DP_level > prglvl)DP_level = 0;
 				break;
 			case 1:
@@ -820,7 +843,7 @@ void SW_on(byte sw) {
 				case 21:
 					DP_level = 8; //schaal instellen
 					break;
-				case 9: 
+				case 9:
 					DP_level = 0; //instellen preset nummer
 					break;
 				}
