@@ -25,6 +25,10 @@
 
 V3.01
 Toevoegen afstand snelheids meting
+Twee schermen in bedrijf
+1 voor traject mode 1 voor rotatie mode
+In traject mode knop 3 en 4 parallele funtie als de sensoren.
+Speedmeter ook als als stopwatch met reken functies bruikbaar.
 
 
 */
@@ -109,6 +113,7 @@ unsigned long trajecttime = 0;
 unsigned long gemetentijd = 0;
 byte countleds = 0;
 int laatstesnelheid[2] = { 0,0 };
+byte countanimatie = 0;
 
 //temps
 //int countsign = 0;
@@ -379,6 +384,7 @@ void traject(byte s) { //V3.01 s=sensor nummer
 				trajectfase = 1;
 				trajecttime = millis();
 				lastsensor = s;
+				countanimatie = 0;
 				GPIOR0 |= (1 << 4); //set bit 4 start led knipperen
 				laatstesnelheid[1] = laatstesnelheid[0];
 				break;
@@ -764,7 +770,7 @@ void scherm2() {
 void scherm3() {// in bedrijf sensor naar sensor <->
 	unsigned long speed = 0;
 	unsigned long dist = 0;
-	float time = 0;
+	float time = 0;	
 	display.drawLine(1, 55, 128, 55, 1);
 	display.setTextColor(WHITE);
 	display.setTextSize(1);
@@ -797,6 +803,28 @@ void scherm3() {// in bedrijf sensor naar sensor <->
 	display.print(laatstesnelheid[0]);  display.setTextSize(1);
 	display.setCursor(61, 32);
 	display.print("km/u");
+
+	if (GPIOR0 & (1 << 4)) { //flag meting is bezig
+		switch (countanimatie) {
+		case 0:
+			GPIOR0 &= ~(1 << 7); //reset flag boven naar beneden
+			break;
+		case 10:
+			GPIOR0 |= (1 << 7);
+			break;
+		}
+		if (GPIOR0 & (1 << 7)) {
+			countanimatie --;
+		}
+		else {
+			countanimatie ++;
+		}
+
+		for (byte i = 0; i < countanimatie; i++) {
+			display.drawLine(120, 25 + i, 125, 25 + i,1);
+			display.drawLine(120, 42 - i, 125, 42 - i, 1);
+		}
+	}
 }
 byte spaties(int nummer, byte digits) {
 	/*
@@ -853,7 +881,7 @@ void SW_on(byte sw) {
 		break;
 	case 1: //Knop 2
 		if (~GPIOR0 & (1 << 2)) { //in bedrijf
-			MEM_reg ^= (1 << 0);
+			if (~preset[p].mode & (1 << 0))	MEM_reg ^= (1 << 0);
 		}
 		else { //program scherm V3.01 twee soorten
 			DP_level++;
@@ -879,14 +907,8 @@ void SW_on(byte sw) {
 		break;
 
 	case 2: //Knop 3
-		if (~GPIOR0 & (1 << 2)) { //in berijf
-			if (preset[p].mode & (1 << 0)) { //traject mode
-				traject(1);
-			}
-			else { //rotatie mode
-				MEM_reg ^= (1 << 1);
-			}
-
+		if (~GPIOR0 & (1 << 2)) { //in bedrijf
+			if (~preset[p].mode & (1 << 0)) MEM_reg ^= (1 << 1);
 		}
 		else {
 			switch (DP_level) {
@@ -937,7 +959,18 @@ void SW_on(byte sw) {
 	case 3: //Knop 4
 		if (~GPIOR0 & (1 << 2)) {
 			if (preset[p].mode & (1 << 0)) { //traject mode
-				traject(2);
+				if (trajectfase == 1) { //stoppen stopwatch
+					if (lastsensor == 1) {
+						traject(2);
+					}
+					else {
+						traject(1);
+					}
+				}
+				else { //fase =0 , starten stopwatch
+					traject(1);
+				}
+				//traject(2);
 			}
 			else { //rotatie mode
 				if (~MEM_reg & (1 << 0)) { //KMh mode

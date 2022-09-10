@@ -29,6 +29,7 @@ bit3
 bit4 true led laten knipperen in traject mode, 0 = led knipperen uit
 bit5  holds interrupts in trajectmode
 bit6 true end traject
+bit7 animatie teller
 
 EEPROM
 MEM_reg=10
