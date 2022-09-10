@@ -108,7 +108,7 @@ byte trajectfase = 0;
 unsigned long trajecttime = 0;
 unsigned long gemetentijd = 0;
 byte countleds = 0;
-int laatstesnelheid = 0;
+int laatstesnelheid[2] = { 0,0 };
 
 //temps
 //int countsign = 0;
@@ -277,6 +277,21 @@ void MEM_read() {
 		preset[i].traject = EEPROM.read(112 + xtr); //lengte van het traject
 
 		switch (i) {
+		case 0: //preset 1 traject meting 1M
+			if (preset[i].dr1 == 0xFF)preset[i].dr1 = 20;
+			if (preset[i].dr2 == 0xFF)preset[i].dr2 = 20;
+			if (preset[i].dw1 == 0xFF)preset[i].dw1 = preset[p].dr1;
+			if (preset[i].dw2 == 0xFF)preset[i].dw2 = preset[p].dr2;
+			if (preset[i].puls1 == 0xFF)preset[i].puls1 = 1;
+			if (preset[i].puls2 == 0xFF)preset[i].puls2 = 1;
+			if (preset[i].schaal == 0xFF)preset[i].schaal = 87;
+			if (preset[i].precisie == 0xFF)preset[i].precisie = 6;
+			if (preset[i].pulsIt == 0xFF)preset[i].pulsIt = 4; //waarschijnlijk standaard... 
+			if (preset[i].Dsc == 0xFF)preset[i].Dsc = 63; ////diameter mm/10 roller waar Itrain/speedcat mee rekenen, ijken
+			if (preset[i].usb == 0xFF)preset[i].usb = 0; //0=geen usb uit 1=Itrain/SpeedCat 2=SimpleDyno
+			if (preset[i].mode == 0xFF)preset[i].mode = 1; //rotatie of <-> V3.01
+			if (preset[i].traject == 0xFF) preset[i].traject = 100;
+			break;
 		case 5: //default preset for Itrain/speedmeter
 			if (preset[i].dr1 == 0xFF)preset[i].dr1 = 6;
 			if (preset[i].dr2 == 0xFF)preset[i].dr2 = 1;
@@ -365,7 +380,7 @@ void traject(byte s) { //V3.01 s=sensor nummer
 				trajecttime = millis();
 				lastsensor = s;
 				GPIOR0 |= (1 << 4); //set bit 4 start led knipperen
-
+				laatstesnelheid[1] = laatstesnelheid[0];
 				break;
 
 			case 1: //meting in proces tweede sensor bereikt.
@@ -748,32 +763,44 @@ void scherm2() {
 }
 void scherm3() {// in bedrijf sensor naar sensor <->
 	unsigned long speed = 0;
-	unsigned int temp = 0;
+	unsigned long dist = 0;
+	float time = 0;
 	display.drawLine(1, 55, 128, 55, 1);
-	display.setTextColor(WHITE); //dit wordt onnodig drie keer gedaan V3.01 aanpassen
+	display.setTextColor(WHITE);
 	display.setTextSize(1);
-	display.setCursor(5, 57);
+	display.setCursor(1, 57);
 	display.write(174); display.write(175); display.print(preset[p].traject); display.print("cm");
-	display.setCursor(60, 57);
-	display.print(laatstesnelheid);
+	//schaal weergeven in onderbalk
+	display.setCursor(52, 57); display.print("1:"); display.print(preset[p].schaal);
+
+	display.setCursor(85, 57);
+	display.print(laatstesnelheid[1]); display.print("km/u");
 
 	//snelheid berekenen traject in cm >KM duur in ms > uur = traject/gemeten*36 
+	if (gemetentijd > 10) {
+		dist = preset[p].traject * 100000;
+		speed = dist / gemetentijd * 36;
+		speed = speed / 100;
+		time = gemetentijd; // / 1000;
+		time = time / 1000;
+		laatstesnelheid[0] = speed * preset[p].schaal / 1000;
+	}
 
-	speed = preset[p].traject * 1000000; //factor om delen door nul te voorkomen
+	display.setCursor(1, 1); display.print(speed); display.print("m/u");
+	display.setCursor(54, 1); display.print(time); display.print("s");
+	display.drawLine(1, 10, 128, 10, 1);
 
-	speed = speed / gemetentijd;
-
-	display.setCursor(5, 5); display.print(speed);
-	display.setCursor(5, 20); display.print(gemetentijd);
-
-
-
-	//display.setCursor(20, 20);
-	//display.print(gemetentijd);
+	display.setCursor(25, 25); display.setTextSize(2);
+	for (byte i = 0; i < spaties(laatstesnelheid[0], 3); i++) {
+		display.print(" ");
+	}
+	display.print(laatstesnelheid[0]);  display.setTextSize(1);
+	display.setCursor(61, 32);
+	display.print("km/u");
 }
 byte spaties(int nummer, byte digits) {
 	/*
-	Berkend aantal spaties in een txt om deze rechts uit te kunnen lijnen
+	Berekend aantal spaties in een txt om deze rechts uit te kunnen lijnen
 	*/
 	byte aantal = 0;
 	byte spatie = 0;
@@ -852,8 +879,14 @@ void SW_on(byte sw) {
 		break;
 
 	case 2: //Knop 3
-		if (~GPIOR0 & (1 << 2)) {
-			MEM_reg ^= (1 << 1);
+		if (~GPIOR0 & (1 << 2)) { //in berijf
+			if (preset[p].mode & (1 << 0)) { //traject mode
+				traject(1);
+			}
+			else { //rotatie mode
+				MEM_reg ^= (1 << 1);
+			}
+
 		}
 		else {
 			switch (DP_level) {
@@ -903,11 +936,17 @@ void SW_on(byte sw) {
 		break;
 	case 3: //Knop 4
 		if (~GPIOR0 & (1 << 2)) {
-			if (~MEM_reg & (1 << 0)) { //KMh mode
-				MEM_reg ^= (1 << 3); //snelheid op schaal of 1:1
+			if (preset[p].mode & (1 << 0)) { //traject mode
+				traject(2);
 			}
-			else { //RPM mode
-				MEM_reg ^= (1 << 2); //toon welk RPM roller/wiel getoond wordt
+			else { //rotatie mode
+				if (~MEM_reg & (1 << 0)) { //KMh mode
+					MEM_reg ^= (1 << 3); //snelheid op schaal of 1:1
+				}
+				else { //RPM mode
+					MEM_reg ^= (1 << 2); //toon welk RPM roller/wiel getoond wordt
+				}
+
 			}
 		}
 		else {
