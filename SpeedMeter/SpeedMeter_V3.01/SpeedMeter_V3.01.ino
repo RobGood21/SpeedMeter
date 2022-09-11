@@ -40,11 +40,6 @@ Speedmeter ook als als stopwatch met reken functies bruikbaar.
 #include <Adafruit_SSD1306.h>
 
 #define Version "V3.01"
-#define resettime 500 
-//na 1 interrupt worden alle interrupts geblocked gedurende de resettime, belangrijk dus dat het traject minstens de 
-//reset time moet duren. en dat de hele trein gepasseerd moet zijn plus de resettijd voordat de andere sensor
-//kan worden geactiveerd
-
 
 //Display constructor
 Adafruit_SSD1306 display(128, 64, &Wire, 4);
@@ -68,6 +63,7 @@ int SW_time; //counter, timer voor zeer langzame processen (1xper 20ms, 50hz)
 struct PRESETS {
 	byte mode; //0=rotatiemeting 1=point to point meting
 	byte traject; //lengte van het traject in cm (max dus 2M55?)
+	byte reset; //duur blokkeren sensoren in traject mode (in halve seconden)
 	byte usb; //0=geen output 1=Itrain/SpeedCat 2=Simpledyn
 	byte dr1; //diameter rol 1 in mm
 	byte dr2; //diameter rol2
@@ -225,7 +221,7 @@ void loop() {
 
 		if (preset[p].mode & (1 << 0)) {
 
-			if (millis() - sensortime > resettime) {
+			if (millis() - sensortime > preset[p].reset*500) {
 				GPIOR0 &= ~(1 << 5); //reset flag one shot interrupts
 				PORTD &= ~(1 << 6); //kill red led
 				if (GPIOR0 & (1 << 6)) trajectend();
@@ -280,6 +276,7 @@ void MEM_read() {
 		preset[i].usb = EEPROM.read(110 + xtr);
 		preset[i].mode = EEPROM.read(111 + xtr); //mode 0=rotatie 1=<->
 		preset[i].traject = EEPROM.read(112 + xtr); //lengte van het traject
+		preset[i].reset = EEPROM.read(113 + xtr); //duur blokkades sensoren
 
 		switch (i) {
 		case 0: //preset 1 traject meting 1M
@@ -296,6 +293,7 @@ void MEM_read() {
 			if (preset[i].usb == 0xFF)preset[i].usb = 0; //0=geen usb uit 1=Itrain/SpeedCat 2=SimpleDyno
 			if (preset[i].mode == 0xFF)preset[i].mode = 1; //rotatie of <-> V3.01
 			if (preset[i].traject == 0xFF) preset[i].traject = 100;
+			if (preset[i].reset == 0xFF)preset[i].reset = 2; //1 seconde blokkade
 			break;
 		case 5: //default preset for Itrain/speedmeter
 			if (preset[i].dr1 == 0xFF)preset[i].dr1 = 6;
@@ -311,6 +309,8 @@ void MEM_read() {
 			if (preset[i].usb == 0xFF)preset[i].usb = 1; //0=geen usb uit 1=Itrain/SpeedCat 2=SimpleDyno
 			if (preset[i].mode == 0xFF)preset[i].mode = 0;
 			if (preset[i].traject == 0xFF) preset[i].traject = 100;
+			if (preset[i].reset == 0xFF)preset[i].reset = 2; //1 seconde blokkade
+
 			break;
 
 		default:
@@ -327,6 +327,7 @@ void MEM_read() {
 			if (preset[i].usb == 0xFF)preset[i].usb = 0; //0=geen usb uit 1=Itrain/SpeedCat 2=SimpleDyno
 			if (preset[i].mode == 0xFF)preset[i].mode = 0; //rotatie of <-> V3.01
 			if (preset[i].traject == 0xFF) preset[i].traject = 100;
+			if (preset[i].reset == 0xFF)preset[i].reset = 2; //1 seconde blokkade
 			break;
 		}
 	}
@@ -349,7 +350,7 @@ void MEM_write() {
 	EEPROM.update(110 + xtr, preset[p].usb);
 	EEPROM.update(111 + xtr, preset[p].mode); //v3.01
 	EEPROM.update(112 + xtr, preset[p].traject); //v3.01
-
+	EEPROM.update(113 + xtr, preset[p].reset); //v3.01
 	//inits
 	R_dender(); //bereken denderwaardes, van precisie   
 }
@@ -556,6 +557,7 @@ void scherm2() {
 	//programmeer venster	
 	byte spatie;
 	String txt_data;
+	float temp = 0;
 
 	display.setTextColor(WHITE);
 	display.setTextSize(1);
@@ -591,6 +593,12 @@ void scherm2() {
 		display.print(F("Traject: "));
 		display.setCursor(61, 15);
 		display.print(preset[p].traject); display.print("cm");
+
+		display.setCursor(1, 25);
+		display.print("Reset: ");
+		temp = preset[p].reset * 10;
+		temp = temp/ 20;
+		display.setCursor(61, 25); display.print(temp); display.print("s");
 
 
 	}
@@ -764,13 +772,16 @@ void scherm2() {
 	case 20:
 		x = 61; y = 23; w = 90;
 		break;
+	case 21: //reset
+		x = 61; y = 33; w = 90;
+		break;
 	}
 	display.drawLine(x, y, w, y, 1);
 }
 void scherm3() {// in bedrijf sensor naar sensor <->
 	unsigned long speed = 0;
 	unsigned long dist = 0;
-	float time = 0;	
+	float time = 0;
 	display.drawLine(1, 55, 128, 55, 1);
 	display.setTextColor(WHITE);
 	display.setTextSize(1);
@@ -814,14 +825,14 @@ void scherm3() {// in bedrijf sensor naar sensor <->
 			break;
 		}
 		if (GPIOR0 & (1 << 7)) {
-			countanimatie --;
+			countanimatie--;
 		}
 		else {
-			countanimatie ++;
+			countanimatie++;
 		}
 
 		for (byte i = 0; i < countanimatie; i++) {
-			display.drawLine(120, 25 + i, 125, 25 + i,1);
+			display.drawLine(120, 25 + i, 125, 25 + i, 1);
 			display.drawLine(120, 42 - i, 125, 42 - i, 1);
 		}
 	}
@@ -895,7 +906,7 @@ void SW_on(byte sw) {
 				case 2:
 					DP_level = 20;//instellen trajectlengte 
 					break;
-				case 21:
+				case 22: //na reset instellen
 					DP_level = 8; //schaal instellen
 					break;
 				case 9:
@@ -952,7 +963,12 @@ void SW_on(byte sw) {
 			case 12:
 				if (preset[p].pulsIt > 1)preset[p].pulsIt--;
 				break;
-
+			case 20: //traject lengte
+				if (preset[p].traject > 5)preset[p].traject--;
+				break;
+			case 21: //reset tijd 
+				if (preset[p].reset > 1)preset[p].reset--;
+				break;
 			}
 		}
 		break;
@@ -1024,6 +1040,14 @@ void SW_on(byte sw) {
 			case 12:
 				if (preset[p].pulsIt < 24)preset[p].pulsIt++;
 				break;
+			case 20: //traject lengte
+				if (preset[p].traject < 250)preset[p].traject++; //max 2,5m
+				break;
+			case 21: //reset tijd
+				if (preset[p].reset < 20)preset[p].reset++; //max 10 sec
+				break;
+
+
 			}
 		}
 		break;
